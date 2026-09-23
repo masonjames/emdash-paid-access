@@ -1,9 +1,17 @@
+// Copyright 2026 Stranger Studios.
+// Modified by Mason James, 2026-09-23.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 import type { AuthTokenRecord, MemberSessionState, SessionRecord } from "../types.js";
 import { generateToken, getCookieValue, isRecord, normalizeEmail, nowIso, sanitizeRedirectPath, unwrapStoredRecord } from "../utils.js";
 
+export const SESSION_TOKEN_PREFIX = "phb_s_";
+export const MAGIC_LINK_TOKEN_PREFIX = "phb_ml_";
+export const AGENT_TOKEN_PREFIX = "phb_at_";
+
 const AUTH_TOKEN_TTL_MS = 15 * 60 * 1000;
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const SESSION_COOKIE_NAME = "rwstripe_session";
+const SESSION_COOKIE_NAME = "phb_session";
 
 export async function isEmailReady(ctx: any): Promise<boolean> {
 	// emdash >= 0.16: ctx.email is undefined until an email:deliver provider
@@ -17,7 +25,7 @@ async function invalidateAuthTokensForEmail(ctx: any, email: string) {
 }
 
 export async function createSession(ctx: any, email: string): Promise<SessionRecord> {
-	const sessionToken = generateToken("rwst_", 32);
+	const sessionToken = generateToken(SESSION_TOKEN_PREFIX, 32);
 	const session: SessionRecord = {
 		email,
 		sessionToken,
@@ -111,7 +119,7 @@ export async function sendMagicLink(
 		options.redirect,
 		options.intent === "subscribe-free" ? "/resources/#subscribe" : "/",
 	);
-	const token = generateToken("rwml_", 40);
+	const token = generateToken(MAGIC_LINK_TOKEN_PREFIX, 40);
 	const authToken: AuthTokenRecord = {
 		email,
 		token,

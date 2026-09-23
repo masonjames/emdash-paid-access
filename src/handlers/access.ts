@@ -1,18 +1,23 @@
+// Copyright 2026 Stranger Studios.
+// Modified by Mason James, 2026-09-23.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+import { PluginRouteError } from "emdash";
+
 import type { AccessDecision, ContentRestrictionRecord } from "../types.js";
 import { getCustomerRecordByEmail, upsertCustomerRecord } from "../customers.js";
-import { isPaidPlanSlug, type PaidPlanSlug } from "../plans.js";
 import { StripeClient } from "../stripe.js";
-import { isRecord, normalizeStringArray, parsePaidPlanSlugs, uniqueStrings, unwrapStoredRecord } from "../utils.js";
+import { isRecord, normalizeStringArray, parsePlanSlugs, uniqueStrings, unwrapStoredRecord } from "../utils.js";
 import { getSessionEmail } from "./auth.js";
 import { loadSettings, resolveRequiredProductIds } from "./settings.js";
 
-function parseRequiredPlanSlugsFromUrl(url: URL): PaidPlanSlug[] {
+function parseRequiredPlanSlugsFromUrl(url: URL): string[] {
 	const allValues = url.searchParams.getAll("requiredPlanSlugs");
 	if (allValues.length === 0) {
 		const single = url.searchParams.get("requiredPlanSlugs");
-		return single ? single.split(",").map((value) => value.trim()).filter(isPaidPlanSlug) : [];
+		return single ? single.split(",").map((value) => value.trim()).filter(Boolean) : [];
 	}
-	return allValues.map((value) => value.trim()).filter(isPaidPlanSlug);
+	return allValues.map((value) => value.trim()).filter(Boolean);
 }
 
 function readAccessInput(ctx: any) {
@@ -31,7 +36,7 @@ function readAccessInput(ctx: any) {
 				: (url.searchParams.get("slug") || null),
 		requiredPlanSlugs:
 			Array.isArray(body.requiredPlanSlugs)
-				? parsePaidPlanSlugs(body.requiredPlanSlugs)
+				? parsePlanSlugs(body.requiredPlanSlugs)
 				: parseRequiredPlanSlugsFromUrl(url),
 	};
 }
@@ -47,7 +52,7 @@ function normalizeRestrictionRecord(record: unknown): ContentRestrictionRecord |
 		collectionSlug: data.collectionSlug,
 		slug: typeof data.slug === "string" ? data.slug : null,
 		title: typeof data.title === "string" ? data.title : null,
-		requiredPlanSlugs: parsePaidPlanSlugs(data.requiredPlanSlugs),
+		requiredPlanSlugs: parsePlanSlugs(data.requiredPlanSlugs),
 		productIds: normalizeStringArray(data.productIds),
 		source: data.source === "manual" ? "manual" : "manual",
 		createdAt: typeof data.createdAt === "string" ? data.createdAt : new Date().toISOString(),
@@ -76,6 +81,21 @@ async function getRestrictionRecords(
 }
 
 export async function accessHandler(ctx: any): Promise<AccessDecision | { ok: false; error: string }> {
+	const settings = await loadSettings(ctx);
+	if (settings.humans.mode === "off") {
+		return {
+			restricted: false,
+			authenticated: false,
+			hasAccess: true,
+			email: null,
+			requiredPlanSlugs: [],
+			requiredProductIds: [],
+		};
+	}
+	if (settings.humans.mode === "delegate") {
+		throw PluginRouteError.notFound("Human access is delegated to the legacy membership plugin.");
+	}
+
 	const { contentId, collectionSlug, slug, requiredPlanSlugs: callerRequiredPlanSlugs } = readAccessInput(ctx);
 	if (!contentId || !collectionSlug) {
 		return { ok: false, error: "contentId and collectionSlug are required." };
@@ -84,11 +104,14 @@ export async function accessHandler(ctx: any): Promise<AccessDecision | { ok: fa
 	const restrictionRecords = await getRestrictionRecords(ctx, collectionSlug, contentId, slug);
 	const restrictionPlanSlugs = restrictionRecords.flatMap((record) => record.requiredPlanSlugs || []);
 	const restrictionProductIds = restrictionRecords.flatMap((record) => record.productIds || []);
-	const requiredPlanSlugs = uniqueStrings([...restrictionPlanSlugs, ...callerRequiredPlanSlugs]).filter(isPaidPlanSlug);
-	const settings = await loadSettings(ctx);
+	const validPlanSlugs = settings.humans.plans.map((plan) => plan.slug);
+	const requiredPlanSlugs = uniqueStrings([
+		...restrictionPlanSlugs,
+		...parsePlanSlugs(callerRequiredPlanSlugs, validPlanSlugs),
+	]);
 	const requiredProductIds = uniqueStrings([
 		...restrictionProductIds,
-		...resolveRequiredProductIds(settings.planMappings, requiredPlanSlugs),
+		...resolveRequiredProductIds(settings.humans.plans, requiredPlanSlugs),
 	]);
 	const restricted = requiredPlanSlugs.length > 0 || requiredProductIds.length > 0;
 	const email = await getSessionEmail(ctx);

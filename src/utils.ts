@@ -1,5 +1,6 @@
-import type { GhostPlanSlug, PaidPlanSlug } from "./plans.js";
-import { isGhostPlanSlug, isPaidPlanSlug } from "./plans.js";
+// Copyright 2026 Stranger Studios.
+// Modified by Mason James, 2026-09-23.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 export function nowIso(): string {
 	return new Date().toISOString();
@@ -75,16 +76,16 @@ export function getCookieValue(request: Request, name: string): string | null {
 	return null;
 }
 
-export function unwrapStoredRecord<T>(record: { data?: T } | T | null | undefined): T | null {
+export function unwrapStoredRecord<T>(record: unknown): T | null {
 	if (!record) {
 		return null;
 	}
 
 	if (isRecord(record) && "data" in record) {
-		return record.data ?? null;
+		return (record.data as T | null | undefined) ?? null;
 	}
 
-	return record;
+	return record as T;
 }
 
 export function normalizeStringArray(value: unknown): string[] {
@@ -106,30 +107,7 @@ export function uniqueStrings(values: Iterable<string | null | undefined>): stri
 	return [...seen];
 }
 
-export function parseGhostPlanSlugs(value: unknown): GhostPlanSlug[] {
-	if (!Array.isArray(value)) {
-		return [];
-	}
-
-	const result: GhostPlanSlug[] = [];
-	for (const entry of value) {
-		if (isGhostPlanSlug(entry) && !result.includes(entry)) {
-			result.push(entry);
-		}
-	}
-	return result;
-}
-
-export function parsePaidPlanSlugs(value: unknown): PaidPlanSlug[] {
-	if (!Array.isArray(value)) {
-		return [];
-	}
-
-	const result: PaidPlanSlug[] = [];
-	for (const entry of value) {
-		if (isPaidPlanSlug(entry) && !result.includes(entry)) {
-			result.push(entry);
-		}
-	}
-	return result;
+export function parsePlanSlugs(value: unknown, validSlugs?: Iterable<string>): string[] {
+	const allowed = validSlugs ? new Set(validSlugs) : null;
+	return uniqueStrings(normalizeStringArray(value)).filter((slug) => !allowed || allowed.has(slug));
 }

@@ -1,25 +1,36 @@
-import type { GhostPlanSlug, PaidPlanSlug } from "./plans.js";
+// Copyright 2026 Stranger Studios.
+// Modified by Mason James, 2026-09-23.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+import type { HumanPlan } from "./plans.js";
 
 export type StripeEnvironment = "live" | "test";
+export type AgentMode = "off" | "tokens-only" | "paid";
+export type AgentRail = "origin-x402" | "gateway";
+export type HumanMode = "off" | "stripe" | "delegate";
 
-export interface PlanMappings {
-	"default-product": string | null;
-	"content-personall-ai": string | null;
+export interface AgentSettings {
+	mode: AgentMode;
+	rail: AgentRail;
+	payTo: string;
+	network: "" | "eip155:84532" | "eip155:8453";
+	edgeTrust: "none" | string;
 }
 
-export const DEFAULT_PLAN_MAPPINGS: PlanMappings = {
-	"default-product": null,
-	"content-personall-ai": null,
-};
+export interface HumanSettings {
+	mode: HumanMode;
+	plans: HumanPlan[];
+}
 
-export interface RestrictWithStripeSettings {
+export interface PaidAccessSettings {
+	agents: AgentSettings;
+	humans: HumanSettings;
 	stripeSecretKey: string | null;
 	stripeSecretKeyMasked: string;
 	stripePublishableKey: string;
 	stripeAccountId: string;
 	stripeEnvironment: StripeEnvironment;
 	showExcerpts: boolean;
-	planMappings: PlanMappings;
 	emailConfigured: boolean;
 	isConfigured: boolean;
 }
@@ -53,7 +64,7 @@ export interface ContentRestrictionRecord {
 	collectionSlug: string;
 	slug?: string | null;
 	title?: string | null;
-	requiredPlanSlugs?: GhostPlanSlug[];
+	requiredPlanSlugs?: string[];
 	productIds?: string[];
 	source?: "manual";
 	createdAt: string;
@@ -63,7 +74,7 @@ export interface ContentRestrictionRecord {
 export interface TaxonomyRestrictionRecord {
 	taxonomyName: string;
 	termId: string;
-	requiredPlanSlugs?: GhostPlanSlug[];
+	requiredPlanSlugs?: string[];
 	productIds?: string[];
 	createdAt: string;
 	updatedAt?: string;
@@ -79,7 +90,7 @@ export interface AccessDecision {
 	authenticated: boolean;
 	hasAccess: boolean;
 	email: string | null;
-	requiredPlanSlugs: PaidPlanSlug[];
+	requiredPlanSlugs: string[];
 	requiredProductIds: string[];
 	error?: string;
 }

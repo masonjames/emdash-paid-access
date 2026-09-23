@@ -1,82 +1,79 @@
-export type GhostPlanSlug = "free" | "default-product" | "content-personall-ai";
-export type PaidPlanSlug = Exclude<GhostPlanSlug, "free">;
+// Copyright 2026 Stranger Studios.
+// Modified by Mason James, 2026-09-23.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+import { isRecord, normalizeStringArray } from "./utils.js";
+
 export type BillingInterval = "monthly" | "yearly";
-export type GhostVisibility = "public" | "members" | "paid";
 
-export interface CanonicalPlanDefinition {
-	slug: GhostPlanSlug;
+export interface HumanPlan {
+	slug: string;
 	name: string;
-	description: string;
-	tier: "free" | "paid";
-	monthlyLabel: string | null;
-	yearlyLabel: string | null;
-	trialLabel: string | null;
-	grantsVisibility: GhostVisibility[];
+	description?: string;
+	stripeProductId: string | null;
+	grantsVisibility: string[];
+	monthlyLabel?: string;
+	yearlyLabel?: string;
+	trialLabel?: string;
 }
 
-export const CANONICAL_PLANS: CanonicalPlanDefinition[] = [
-	{
-		slug: "free",
-		name: "Free",
-		description: "Get the latest posts in your inbox and sign in to free member areas.",
-		tier: "free",
-		monthlyLabel: null,
-		yearlyLabel: null,
-		trialLabel: null,
-		grantsVisibility: ["public"],
-	},
-	{
-		slug: "default-product",
-		name: "Content & Chatbot Access",
-		description: "Paid access to member-only writing plus chatbot access.",
-		tier: "paid",
-		monthlyLabel: "USD 5/mo",
-		yearlyLabel: "USD 50/yr",
-		trialLabel: null,
-		grantsVisibility: ["members"],
-	},
-	{
-		slug: "content-personall-ai",
-		name: "All Access Pass",
-		description: "Full access across content and premium AI experiences.",
-		tier: "paid",
-		monthlyLabel: "USD 15/mo",
-		yearlyLabel: "USD 150/yr",
-		trialLabel: "14-day trial",
-		grantsVisibility: ["members", "paid"],
-	},
-];
+export function normalizeHumanPlans(value: unknown): HumanPlan[] | null {
+	if (!Array.isArray(value)) {
+		return null;
+	}
 
-export const PLAN_BY_SLUG = Object.fromEntries(
-	CANONICAL_PLANS.map((plan) => [plan.slug, plan]),
-) as Record<GhostPlanSlug, CanonicalPlanDefinition>;
+	const plans: HumanPlan[] = [];
+	const slugs = new Set<string>();
+	for (const candidate of value) {
+		if (!isRecord(candidate)) {
+			return null;
+		}
+		const slug = typeof candidate.slug === "string" ? candidate.slug.trim() : "";
+		const name = typeof candidate.name === "string" ? candidate.name.trim() : "";
+		if (!slug || !name || slugs.has(slug)) {
+			return null;
+		}
+		if (candidate.stripeProductId != null && typeof candidate.stripeProductId !== "string") {
+			return null;
+		}
+		if (!Array.isArray(candidate.grantsVisibility)) {
+			return null;
+		}
 
-export const PAID_PLAN_SLUGS = CANONICAL_PLANS.filter(
-	(plan): plan is CanonicalPlanDefinition & { slug: PaidPlanSlug } => plan.tier === "paid",
-).map((plan) => plan.slug);
+		slugs.add(slug);
+		plans.push({
+			slug,
+			name,
+			description: typeof candidate.description === "string" ? candidate.description.trim() : undefined,
+			stripeProductId:
+				typeof candidate.stripeProductId === "string" && candidate.stripeProductId.trim()
+					? candidate.stripeProductId.trim()
+					: null,
+			grantsVisibility: normalizeStringArray(candidate.grantsVisibility),
+			monthlyLabel: typeof candidate.monthlyLabel === "string" ? candidate.monthlyLabel.trim() : undefined,
+			yearlyLabel: typeof candidate.yearlyLabel === "string" ? candidate.yearlyLabel.trim() : undefined,
+			trialLabel: typeof candidate.trialLabel === "string" ? candidate.trialLabel.trim() : undefined,
+		});
+	}
 
-export const VISIBILITY_TO_PLAN_SLUGS: Record<GhostVisibility, PaidPlanSlug[]> = {
-	public: [],
-	members: ["default-product", "content-personall-ai"],
-	paid: ["content-personall-ai"],
-};
-
-export function isGhostPlanSlug(value: unknown): value is GhostPlanSlug {
-	return typeof value === "string" && value in PLAN_BY_SLUG;
+	return plans;
 }
 
-export function isPaidPlanSlug(value: unknown): value is PaidPlanSlug {
-	return typeof value === "string" && PAID_PLAN_SLUGS.includes(value as PaidPlanSlug);
+export function isPlanSlug(value: unknown, plans: HumanPlan[]): value is string {
+	return typeof value === "string" && plans.some((plan) => plan.slug === value);
+}
+
+export function getPlan(plans: HumanPlan[], slug: string): HumanPlan | undefined {
+	return plans.find((plan) => plan.slug === slug);
 }
 
 export function isBillingInterval(value: unknown): value is BillingInterval {
 	return value === "monthly" || value === "yearly";
 }
 
-export function getRequiredPlanSlugsForVisibility(visibility: GhostVisibility | null | undefined): PaidPlanSlug[] {
-	if (!visibility || !(visibility in VISIBILITY_TO_PLAN_SLUGS)) {
+export function getRequiredPlanSlugsForVisibility(plans: HumanPlan[], visibility: string | null | undefined): string[] {
+	if (!visibility) {
 		return [];
 	}
-
-	return VISIBILITY_TO_PLAN_SLUGS[visibility as GhostVisibility];
+	return plans.filter((plan) => plan.grantsVisibility.includes(visibility)).map((plan) => plan.slug);
 }

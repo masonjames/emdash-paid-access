@@ -1,7 +1,22 @@
+// Copyright 2026 Stranger Studios.
+// Modified by Mason James, 2026-09-23.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { checkoutCompleteHandler, checkoutHandler } from "../src/handlers/checkout.js";
 import { StripeClient } from "../src/stripe.js";
+import { MASONJAMES_PLANS } from "./fixtures/masonjames-plans.js";
+
+const TEST_PLANS = MASONJAMES_PLANS.map((plan) => ({
+	...plan,
+	stripeProductId:
+		plan.slug === "default-product"
+			? "prod_default"
+			: plan.slug === "content-personall-ai"
+				? "prod_all_access"
+				: null,
+}));
 
 function createStorageCollection<T>() {
 	const records = new Map<string, T>();
@@ -46,7 +61,7 @@ function createCtx(options: {
 	return {
 		input: options.input ?? {},
 		request: new Request(
-			options.requestUrl ?? "https://site.test/_emdash/api/plugins/restrict-with-stripe/checkout",
+			options.requestUrl ?? "https://site.test/_emdash/api/plugins/paid-access/checkout",
 		),
 		storage: {
 			customers,
@@ -121,10 +136,7 @@ describe("checkoutHandler", () => {
 			},
 			kvSeed: {
 				stripe_secret_key: "sk_test_123",
-				plan_mappings: {
-					"default-product": "prod_default",
-					"content-personall-ai": "prod_all_access",
-				},
+				humans_plans: TEST_PLANS,
 			},
 			email: {
 				send: vi.fn(async () => undefined),
@@ -153,10 +165,7 @@ describe("checkoutHandler", () => {
 			},
 			kvSeed: {
 				stripe_secret_key: "sk_test_123",
-				plan_mappings: {
-					"default-product": "prod_default",
-					"content-personall-ai": "prod_all_access",
-				},
+				humans_plans: TEST_PLANS,
 			},
 		});
 
@@ -180,7 +189,7 @@ describe("checkoutCompleteHandler", () => {
 
 		const ctx = createCtx({
 			requestUrl:
-				"https://site.test/_emdash/api/plugins/restrict-with-stripe/checkout/complete?session_id=cs_test_123&redirect=%2Fresources%2F%23subscribe",
+				"https://site.test/_emdash/api/plugins/paid-access/checkout/complete?session_id=cs_test_123&redirect=%2Fresources%2F%23subscribe",
 			kvSeed: {
 				stripe_secret_key: "sk_test_123",
 			},

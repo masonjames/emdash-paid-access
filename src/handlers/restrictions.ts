@@ -1,5 +1,10 @@
+// Copyright 2026 Stranger Studios.
+// Modified by Mason James, 2026-09-23.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 import type { ContentRestrictionRecord, TaxonomyRestrictionRecord } from "../types.js";
-import { parsePaidPlanSlugs, normalizeStringArray, nowIso, unwrapStoredRecord } from "../utils.js";
+import { parsePlanSlugs, normalizeStringArray, nowIso, unwrapStoredRecord } from "../utils.js";
+import { loadSettings } from "./settings.js";
 
 function normalizeContentRestriction(record: unknown): ContentRestrictionRecord | null {
 	const data = unwrapStoredRecord<ContentRestrictionRecord>(record);
@@ -13,7 +18,7 @@ function normalizeContentRestriction(record: unknown): ContentRestrictionRecord 
 		collectionSlug: data.collectionSlug,
 		slug: typeof data.slug === "string" ? data.slug : null,
 		title: typeof data.title === "string" ? data.title : null,
-		requiredPlanSlugs: parsePaidPlanSlugs(data.requiredPlanSlugs),
+		requiredPlanSlugs: parsePlanSlugs(data.requiredPlanSlugs),
 		productIds: normalizeStringArray(data.productIds),
 		source: "manual",
 		createdAt,
@@ -31,7 +36,7 @@ function normalizeTaxonomyRestriction(record: unknown): TaxonomyRestrictionRecor
 	return {
 		taxonomyName: data.taxonomyName,
 		termId: data.termId,
-		requiredPlanSlugs: parsePaidPlanSlugs(data.requiredPlanSlugs),
+		requiredPlanSlugs: parsePlanSlugs(data.requiredPlanSlugs),
 		productIds: normalizeStringArray(data.productIds),
 		createdAt,
 		updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : createdAt,
@@ -90,17 +95,24 @@ export async function restrictionsHandler(ctx: any) {
 				const data = normalizeContentRestriction(item.data);
 				return data ? { id: item.id, data } : null;
 			})
-			.filter((item): item is { id: string; data: ContentRestrictionRecord } => Boolean(item))
-			.filter((item) => (contentId ? item.data.contentId === contentId : true))
-			.filter((item) => (slug ? item.data.slug === slug || item.data.contentId === slug : true));
+			.filter((item: { id: string; data: ContentRestrictionRecord } | null): item is { id: string; data: ContentRestrictionRecord } => Boolean(item))
+			.filter((item: { id: string; data: ContentRestrictionRecord }) => (contentId ? item.data.contentId === contentId : true))
+			.filter((item: { id: string; data: ContentRestrictionRecord }) => (slug ? item.data.slug === slug || item.data.contentId === slug : true));
 		return { items };
 	}
 
 	if (method === "POST") {
-		const body = ctx.input && typeof ctx.input === "object" ? ctx.input : {};
-		if ((body as Record<string, unknown>).type === "taxonomy") {
-			const taxonomyName = typeof (body as Record<string, unknown>).taxonomyName === "string" ? (body as Record<string, unknown>).taxonomyName : "";
-			const termId = typeof (body as Record<string, unknown>).termId === "string" ? (body as Record<string, unknown>).termId : "";
+		const body: Record<string, unknown> = ctx.input && typeof ctx.input === "object" ? ctx.input : {};
+		const settings = await loadSettings(ctx);
+		const validPlanSlugs = settings.humans.plans.map((plan) => plan.slug);
+		const requestedPlanSlugs = parsePlanSlugs(body.requiredPlanSlugs);
+		const requiredPlanSlugs = parsePlanSlugs(requestedPlanSlugs, validPlanSlugs);
+		if (requestedPlanSlugs.length !== requiredPlanSlugs.length) {
+			return { ok: false, error: "requiredPlanSlugs contains an unknown plan." };
+		}
+		if (body.type === "taxonomy") {
+			const taxonomyName = typeof body.taxonomyName === "string" ? body.taxonomyName : "";
+			const termId = typeof body.termId === "string" ? body.termId : "";
 			if (!taxonomyName || !termId) {
 				return { ok: false, error: "taxonomyName and termId are required." };
 			}
@@ -109,16 +121,16 @@ export async function restrictionsHandler(ctx: any) {
 			await ctx.storage.taxonomyRestrictions.put(key, {
 				taxonomyName,
 				termId,
-				requiredPlanSlugs: parsePaidPlanSlugs((body as Record<string, unknown>).requiredPlanSlugs),
-				productIds: normalizeStringArray((body as Record<string, unknown>).productIds),
+				requiredPlanSlugs,
+				productIds: normalizeStringArray(body.productIds),
 				createdAt: existing?.createdAt ?? nowIso(),
 				updatedAt: nowIso(),
 			});
 			return { ok: true };
 		}
 
-		const contentId = typeof (body as Record<string, unknown>).contentId === "string" ? (body as Record<string, unknown>).contentId : "";
-		const collectionSlug = typeof (body as Record<string, unknown>).collectionSlug === "string" ? (body as Record<string, unknown>).collectionSlug : "";
+		const contentId = typeof body.contentId === "string" ? body.contentId : "";
+		const collectionSlug = typeof body.collectionSlug === "string" ? body.collectionSlug : "";
 		if (!contentId || !collectionSlug) {
 			return { ok: false, error: "contentId and collectionSlug are required." };
 		}
@@ -128,10 +140,10 @@ export async function restrictionsHandler(ctx: any) {
 		const record: ContentRestrictionRecord = {
 			contentId,
 			collectionSlug,
-			slug: typeof (body as Record<string, unknown>).slug === "string" ? (body as Record<string, unknown>).slug : null,
-			title: typeof (body as Record<string, unknown>).title === "string" ? (body as Record<string, unknown>).title : null,
-			requiredPlanSlugs: parsePaidPlanSlugs((body as Record<string, unknown>).requiredPlanSlugs),
-			productIds: normalizeStringArray((body as Record<string, unknown>).productIds),
+			slug: typeof body.slug === "string" ? body.slug : null,
+			title: typeof body.title === "string" ? body.title : null,
+			requiredPlanSlugs,
+			productIds: normalizeStringArray(body.productIds),
 			source: "manual",
 			createdAt: existing?.createdAt ?? nowIso(),
 			updatedAt: nowIso(),

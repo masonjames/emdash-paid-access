@@ -1,3 +1,7 @@
+// Copyright 2026 Stranger Studios.
+// Modified by Mason James, 2026-09-23.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
 
 export interface StripeProduct {
@@ -185,7 +189,7 @@ export class StripeClient {
 			`/invoices?customer=${encodeURIComponent(customerId)}&status=paid&limit=100`,
 		);
 		for (const invoice of invoices.data || []) {
-			if (invoice.subscription || invoice.metadata?.rwstripeIgnore) {
+			if (invoice.subscription || invoice.metadata?.phbIgnore) {
 				continue;
 			}
 			for (const line of invoice.lines?.data || []) {

@@ -1,3 +1,6 @@
+// Copyright 2026 Stranger Studios.
+// Modified by Mason James, 2026-09-23.
+// SPDX-License-Identifier: GPL-2.0-or-later
 {
   "compilerOptions": {
     "target": "ES2022",
@@ -7,6 +10,7 @@
     "moduleResolution": "bundler",
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
+    "noEmit": true,
     "outDir": "dist"
   },
   "include": ["src"]

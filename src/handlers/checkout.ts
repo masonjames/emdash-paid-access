@@ -1,5 +1,9 @@
+// Copyright 2026 Stranger Studios.
+// Modified by Mason James, 2026-09-23.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 import { findOrCreateCustomerRecord, upsertCustomerRecord } from "../customers.js";
-import { isBillingInterval, isPaidPlanSlug, PLAN_BY_SLUG } from "../plans.js";
+import { getPlan, isBillingInterval } from "../plans.js";
 import { StripeClient } from "../stripe.js";
 import { isRecord, normalizeEmail, sanitizeRedirectPath } from "../utils.js";
 import { isEmailReady, sendMagicLink } from "./auth.js";
@@ -18,9 +22,6 @@ export async function checkoutHandler(ctx: any) {
 	const email = normalizeEmail(body.email);
 	const redirectPath = sanitizeRedirectPath(body.redirectUrl, "/");
 
-	if (!isPaidPlanSlug(planSlug)) {
-		return { ok: false, error: "A paid subscription option is required." };
-	}
 	if (!isBillingInterval(billingInterval)) {
 		return { ok: false, error: "A valid billing interval is required." };
 	}
@@ -32,24 +33,22 @@ export async function checkoutHandler(ctx: any) {
 	}
 
 	const settings = await loadSettings(ctx);
+	const plan = typeof planSlug === "string" ? getPlan(settings.humans.plans, planSlug) : undefined;
+	if (!plan || !plan.stripeProductId) {
+		return { ok: false, error: "A configured paid subscription option is required." };
+	}
 	if (!settings.stripeSecretKey) {
 		return { ok: false, error: "Stripe is not configured yet." };
 	}
 
-	const productId = settings.planMappings[planSlug];
-	if (!productId) {
-		return {
-			ok: false,
-			error: `${PLAN_BY_SLUG[planSlug].name} is not mapped to a Stripe product yet.`,
-		};
-	}
+	const productId = plan.stripeProductId;
 
 	const stripe = new StripeClient(settings.stripeSecretKey, ctx.http.fetch);
 	const price = await stripe.findRecurringPriceForProduct(productId, billingInterval);
 	if (!price) {
 		return {
 			ok: false,
-			error: `No active ${billingInterval} price was found for ${PLAN_BY_SLUG[planSlug].name}.`,
+			error: `No active ${billingInterval} price was found for ${plan.name}.`,
 		};
 	}
 

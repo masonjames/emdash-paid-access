@@ -1,3 +1,7 @@
+// Copyright 2026 Stranger Studios.
+// Modified by Mason James, 2026-09-23.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 import { StripeClient } from "./stripe.js";
 import type { CustomerRecord } from "./types.js";
 import { normalizeEmail, nowIso, unwrapStoredRecord } from "./utils.js";
