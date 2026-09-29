@@ -9,7 +9,7 @@ import type { HumanPlan } from "../plans.js";
 import { isRecord } from "../utils.js";
 import type { PaidAccessOptions } from "./options.js";
 
-export type PluginLocals = { emdash?: { handlePluginApiRoute: PublicPluginRouteHandler; handlePublicPluginApiRoute: PublicPluginRouteHandler } };
+export type PluginLocals = { emdash?: { handlePluginApiRoute?: PublicPluginRouteHandler; handlePublicPluginApiRoute: PublicPluginRouteHandler } };
 export type PluginResult<T> = { ok: true; data: T } | { ok: false; code: string };
 export type HumanDecision = AccessDecision & { humanMode?: HumanMode; showExcerpts?: boolean; agentsSold?: boolean };
 export type PublicPlan = Pick<HumanPlan, "slug" | "name" | "description" | "monthlyLabel" | "yearlyLabel" | "trialLabel">;
@@ -17,15 +17,22 @@ export type AccessInput = { collection: string; id: string; slug: string; requir
 
 async function dispatch<T>(locals: PluginLocals, path: string, body: unknown, publicOnly: boolean, pluginId: string, request?: Request): Promise<PluginResult<T>> {
 	try {
-		if (!locals.emdash) return { ok: false, code: "UNAVAILABLE" };
+		if (publicOnly && !locals.emdash) return { ok: false, code: "UNAVAILABLE" };
 		const method = ["plans", "offers"].includes(path) ? "GET" : "POST";
 		const url = new URL(`/_emdash/api/plugins/${encodeURIComponent(pluginId)}/${path}`, request?.url ?? "https://paid-access.invalid");
 		if (method === "GET" && isRecord(body)) for (const [key, value] of Object.entries(body)) if (value != null) url.searchParams.set(key, String(value));
 		const headers = new Headers({ "Content-Type": "application/json" });
 		// Only the legacy public API needs the browser cookie; the paid-access core receives an explicit token.
 		if (pluginId !== "paid-access" && request?.headers.has("cookie")) headers.set("cookie", request.headers.get("cookie")!);
-		const handler = publicOnly ? locals.emdash.handlePublicPluginApiRoute : locals.emdash.handlePluginApiRoute;
-		const result = await handler.call(locals.emdash, pluginId, method, path, new Request(url, { method, headers, ...(method === "POST" ? { body: JSON.stringify(body) } : {}) }));
+		const init = new Request(url, { method, headers, ...(method === "POST" ? { body: JSON.stringify(body) } : {}) });
+		// Anonymous requests (every AI agent) only get EmDash's public dispatcher on
+		// locals, so trusted calls to private routes fall back to the server-only runtime.
+		const privateDispatch = locals.emdash?.handlePluginApiRoute;
+		const result = publicOnly
+			? await locals.emdash!.handlePublicPluginApiRoute.call(locals.emdash, pluginId, method, path, init)
+			: privateDispatch
+				? await privateDispatch.call(locals.emdash, pluginId, method, path, init)
+				: await (await import("emdash/middleware")).withEmDashRuntime(runtime => runtime.handlePluginApiRoute(pluginId, method, path, init));
 		if (!result.success) return { ok: false, code: isRecord(result.error) && typeof result.error.code === "string" ? result.error.code : "UNAVAILABLE" };
 		if (!isRecord(result.data)) return { ok: false, code: "UNAVAILABLE" };
 		const data = result.data;

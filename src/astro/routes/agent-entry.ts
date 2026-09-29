@@ -19,7 +19,10 @@ export const GET: APIRoute = async ({ params, locals, request }) => {
 		if (!entry || isPreview || entry.data.status !== "published") return empty(404);
 		const id = entry.data.id ?? entry.id;
 		const result = await callPlugin<{ rules: ContentRestrictionRecord[]; agents: AgentSettings; canonicalUrl: string | null }>(locals, "agent/context", { collection: params.collection, contentId: id, slug: params.slug }, request);
-		if (!result.ok) return empty(503);
+		if (!result.ok) {
+			console.error(`[paid-access] agent/context failed: ${result.code}`);
+			return empty(503);
+		}
 		const canonical = new URL(request.url); canonical.pathname = canonical.pathname.replace(/\.md$/, ""); canonical.search = "";
 		return await serveAgentEntry({ request,
 			entry: { id, collectionSlug: params.collection, slug: params.slug, title: entry.data.title ?? "", content: entry.data.content ?? [], canonicalUrl: result.data.canonicalUrl ?? canonical.href },
@@ -27,7 +30,10 @@ export const GET: APIRoute = async ({ params, locals, request }) => {
 			receipts: { async put(_id, receipt) { const stored = await callPlugin(locals, "receipts/record", receipt, request); if (!stored.ok) throw new Error(`Receipt storage failed: ${stored.code}`); } },
 			log: console,
 		});
-	} catch { return empty(503); }
+	} catch (error) {
+		console.error("[paid-access] agent route failed", error);
+		return empty(503);
+	}
 };
 // HEAD never settles a payment: strip x402 payment headers so a signed HEAD
 // can't be charged for a response that carries no body.

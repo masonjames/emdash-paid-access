@@ -1,6 +1,8 @@
 // Copyright 2026 Mason James.
 // SPDX-License-Identifier: GPL-2.0-or-later
 import { beforeEach, expect, it, vi } from "vitest";
+const runtimeCall = vi.hoisted(() => vi.fn(async (_id: string, _method: string, _path: string, _req: Request) => ({ success: true, data: { ok: true, via: "runtime" } })));
+vi.mock("emdash/middleware", () => ({ withEmDashRuntime: async (run: (runtime: { handlePluginApiRoute: typeof runtimeCall }) => unknown) => run({ handlePluginApiRoute: runtimeCall }) }));
 import { callPlugin, callPublicPlugin, createPaidAccess, resetRuntimeForTests, type HumanDecision } from "../src/astro/runtime.js";
 import { resetCoexistenceCacheForTests } from "../src/coexistence.js";
 import { resolveOptions } from "../src/astro/options.js";
@@ -30,7 +32,8 @@ it("unwraps plugin error codes and contains exceptions and missing locals", asyn
 	expect(await callPlugin(locals, "access", {})).toEqual({ ok: false, code: "MODULE_DISABLED" });
 	privateCall.mockRejectedValueOnce(new Error("offline"));
 	expect(await callPlugin(locals, "access", {})).toEqual({ ok: false, code: "UNAVAILABLE" });
-	expect(await callPlugin({}, "access", {})).toEqual({ ok: false, code: "UNAVAILABLE" });
+	// Public calls need EmDash's locals; private calls don't (they use the server runtime).
+	expect(await callPublicPlugin({}, "offers", {})).toEqual({ ok: false, code: "UNAVAILABLE" });
 });
 it("probes lazily, reports once and memoizes stripe access per entry and requirements", async () => {
 	const { api, privateCall, publicCall } = setup();
@@ -89,4 +92,13 @@ it("middleware sets request locals and reads the cookie without eagerly calling 
 	await onRequest(context as unknown as Parameters<typeof onRequest>[0], next);
 	expect((locals as typeof locals & { paidAccess: { sessionToken: string } }).paidAccess.sessionToken).toBe("test-token");
 	expect(next).toHaveBeenCalledOnce(); expect(privateCall).not.toHaveBeenCalled(); expect(publicCall).not.toHaveBeenCalled();
+});
+
+it("calls private routes through the server runtime when locals only carry the public dispatcher", async () => {
+	// EmDash's anonymous fast path (every AI agent) exposes only handlePublicPluginApiRoute.
+	runtimeCall.mockClear();
+	const locals = { emdash: { handlePublicPluginApiRoute: vi.fn() } };
+	expect(await callPlugin(locals, "agent/context", { collection: "posts" })).toEqual({ ok: true, data: { ok: true, via: "runtime" } });
+	expect(runtimeCall.mock.calls[0].slice(0, 3)).toEqual(["paid-access", "POST", "agent/context"]);
+	expect(locals.emdash.handlePublicPluginApiRoute).not.toHaveBeenCalled();
 });
