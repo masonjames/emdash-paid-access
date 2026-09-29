@@ -55,7 +55,11 @@ export async function settingsPage(route: RouteContext, ctx: PluginContext, edit
 					{ type: "radio", action_id: "agents_mode", label: "Sell to AI agents", ...(s.agents.mode !== "tokens-only" ? { initial_value: s.agents.mode } : {}), options: [{ value: "off", label: "Off" }, { value: "paid", label: "On — agents pay per read" }] },
 					{ type: "radio", action_id: "agents_network", label: "Network", condition: paid, initial_value: s.agents.network || "eip155:84532", options: [{ value: "eip155:84532", label: "Base Sepolia (test USDC)" }, { value: "eip155:8453", label: "Base (real USDC)" }] },
 					{ ...textField("agents_pay_to", "Payout wallet", s.agents.payTo, "0x…"), condition: paid },
-				]), ...(s.agents.mode === "paid" ? [context("USDC goes straight to this address on Base. Use a wallet you control.")] : []),
+					{ type: "toggle", action_id: "agents_free_by_default", label: "Offer free Markdown for posts without a rule", initial_value: s.agents.freeByDefault, condition: paid },
+				]), ...(s.agents.mode === "paid" ? [
+					context("USDC goes straight to this address on Base. Use a wallet you control."),
+					context("Agents only get posts that have a Paid Access rule. Offering free Markdown for everything else is good for AI search, but leave it off if another plugin or your theme restricts some posts: agents would read those for free."),
+				] : []),
 				context(`Agents get each post as Markdown at ${s.agentRoutePrefix}/{collection}/{slug}.md and pay with the x402 protocol. People reading your site see no change.`),
 			] },
 			{ label: "Members", blocks: members },
@@ -83,7 +87,7 @@ export async function settingsInteraction(route: RouteContext, ctx: PluginContex
 	let tab = 0;
 	if (type === "form_submit" && action === "settings:agents:save") {
 		if (v.agents_mode === "tokens-only" && s.agents.mode !== "tokens-only") return { ...(await settingsPage(route, ctx)), toast: { type: "error", message: "Choose Off or On — agents pay per read. Subscriber tokens ship later." } };
-		input = { agents: { ...s.agents, mode: v.agents_mode ?? s.agents.mode, network: v.agents_network ?? s.agents.network, payTo: v.agents_pay_to ?? s.agents.payTo } }; success = "Agent settings saved.";
+		input = { agents: { ...s.agents, mode: v.agents_mode ?? s.agents.mode, network: v.agents_network ?? s.agents.network, payTo: v.agents_pay_to ?? s.agents.payTo, freeByDefault: typeof v.agents_free_by_default === "boolean" ? v.agents_free_by_default : s.agents.freeByDefault } }; success = "Agent settings saved.";
 	} else if (type === "form_submit" && action === "settings:members:save") {
 		input = { humans: { ...s.humans, mode: v.humans_mode }, stripeSecretKey: v.stripe_secret_key, stripePublishableKey: v.stripe_publishable_key, showExcerpts: v.show_excerpts }; success = "Member settings saved."; tab = 1;
 	} else if (type === "form_submit" && action === "settings:advanced:save") {

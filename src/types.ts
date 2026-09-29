@@ -21,6 +21,7 @@ export interface AgentSettings {
 	payTo: string;
 	network: "" | "eip155:84532" | "eip155:8453";
 	edgeTrust: "none" | string;
+	freeByDefault: boolean;
 }
 
 export interface HumanSettings {

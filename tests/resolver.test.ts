@@ -38,3 +38,10 @@ describe("paid access resolver", () => {
 		expect(resolveAccess({ policies: ["public"], audience: "agent", agentsMode: "off" })).toMatchObject({ agent: "disabled", status: 404 });
 	});
 });
+
+it("keeps entries without a rule away from agents unless the site opts in", () => {
+	expect(resolveAccess({ policies: [], audience: "agent", agentsMode: "paid" })).toMatchObject({ agent: "disabled", status: 404 });
+	expect(resolveAccess({ policies: [], audience: "agent", agentsMode: "paid", freeByDefault: true })).toMatchObject({ agent: "granted", status: 200 });
+	expect(resolveAccess({ policies: ["public"], audience: "agent", agentsMode: "paid" })).toMatchObject({ agent: "granted", status: 200 });
+	expect(resolveAccess({ policies: [], audience: "human", agentsMode: "paid" })).toMatchObject({ human: "granted", status: 200 });
+});

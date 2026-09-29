@@ -32,6 +32,7 @@ export async function entitlementHandler(routeCtx: RouteContext, ctx: PluginCont
 			policies: rules.map((rule) => rule.policy),
 			audience: "agent",
 			agentsMode: settings.agents.mode,
+			freeByDefault: settings.agents.freeByDefault,
 		});
 		return { ...result, price: highestAgentPrice(rules) };
 	} catch {

@@ -12,6 +12,8 @@ export type ResolverInput = {
 	humanAuthorized?: boolean;
 	agentAuthorized?: boolean;
 	error?: boolean;
+	/** Serve entries with no rule to agents as free Markdown. Off unless the site opts in. */
+	freeByDefault?: boolean;
 };
 
 export type ResolverResult = {
@@ -40,6 +42,8 @@ export function resolveAccess(input: ResolverInput): ResolverResult {
 	let agent: ResolverResult["agent"];
 	if (input.error) agent = "error";
 	else if (input.agentsMode === "off") agent = "disabled";
+	// Entries without a rule are opt-in: another plugin or the theme may restrict them.
+	else if (input.policies.length === 0 && !input.freeByDefault) agent = "disabled";
 	else if (policy === "public" || input.agentAuthorized) agent = "granted";
 	else if (policy === "members-only" || input.agentsMode === "tokens-only") agent = "subscriber-only";
 	else agent = "payment-required";

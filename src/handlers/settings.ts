@@ -27,6 +27,7 @@ export const DEFAULT_AGENTS = {
 	payTo: "",
 	network: "" as const,
 	edgeTrust: "none" as const,
+	freeByDefault: false,
 };
 
 export const DEFAULT_HUMANS = {
@@ -80,6 +81,7 @@ export async function loadSettings(ctx: PluginContext): Promise<PaidAccessSettin
 			payTo: ((await ctx.settings.get("agentsPayTo")) as string | null) || "",
 			network: enumValue(await ctx.settings.get("agentsNetwork"), NETWORKS, DEFAULT_AGENTS.network),
 			edgeTrust: ((await ctx.settings.get("agentsEdgeTrust")) as string | null) || "none",
+			freeByDefault: (await ctx.settings.get("agentsFreeByDefault")) === true,
 		},
 		humans: {
 			mode: enumValue(await ctx.settings.get("humansMode"), HUMAN_MODES, DEFAULT_HUMANS.mode),
@@ -105,6 +107,7 @@ function validateAgents(value: unknown): string | null {
 	if (!NETWORKS.includes(value.network as (typeof NETWORKS)[number])) return "Invalid agents.network.";
 	if (typeof value.payTo !== "string") return "agents.payTo must be a string.";
 	if (typeof value.edgeTrust !== "string") return "agents.edgeTrust must be a string.";
+	if (value.freeByDefault !== undefined && typeof value.freeByDefault !== "boolean") return "agents.freeByDefault must be a boolean.";
 	if (value.mode === "paid" && (!/^0x[0-9a-fA-F]{40}$/.test(value.payTo.trim()) || !value.network)) {
 		return "Paid agent access requires an EVM payTo address and network.";
 	}
@@ -184,6 +187,7 @@ export async function settingsHandler(routeCtx: RouteContext, ctx: PluginContext
 			ctx.settings.set("agentsMode", value.mode), ctx.settings.set("agentsRail", value.rail),
 			ctx.settings.set("agentsPayTo", value.payTo.trim()), ctx.settings.set("agentsNetwork", value.network),
 			ctx.settings.set("agentsEdgeTrust", value.edgeTrust.trim() || "none"),
+			ctx.settings.set("agentsFreeByDefault", (body.agents as Record<string, unknown>).freeByDefault === true),
 		]);
 	}
 	if (body.humans !== undefined) {

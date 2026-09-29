@@ -68,7 +68,7 @@ export async function serveAgentEntry(input: {
 }): Promise<Response> {
 	if (new URL(input.request.url).pathname.endsWith(".json")) return empty(404);
 	const policies = input.rules.map((rule) => rule.policy);
-	const initial = resolveAccess({ policies, audience: "agent", agentsMode: input.settings.mode });
+	const initial = resolveAccess({ policies, audience: "agent", agentsMode: input.settings.mode, freeByDefault: input.settings.freeByDefault });
 	if (initial.status === 200) return markdownResponse(markdown(input.entry, "$0"));
 	if (initial.status !== 402) return empty(initial.status);
 

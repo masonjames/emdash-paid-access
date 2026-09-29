@@ -43,7 +43,7 @@ describe("standard plugin companion seams", () => {
 		await expect(invoke(route("agent/context").handler, { ...ctx, input: { collection: "posts", contentId: "1", slug: "post" } })).resolves.toEqual({
 			canonicalUrl: null,
 			rules: [{ policy: "agents-pay", agentPrice: "$0.01" }, { policy: "agents-pay", agentPrice: "$0.01" }, { policy: "members-only", agentPrice: "$0.05" }],
-			agents: { mode: "paid", rail: "origin-x402", payTo: "", network: "eip155:84532", edgeTrust: "none" }, price: "$0.05",
+			agents: { mode: "paid", rail: "origin-x402", payTo: "", network: "eip155:84532", edgeTrust: "none", freeByDefault: false }, price: "$0.05",
 		});
 		await expect(invoke(route("agent/context").handler, { ...ctx, input: {} })).resolves.toMatchObject({ ok: false, error: { code: "BAD_REQUEST" } });
 		await expect(invoke(route("agent/context").handler, { ...ctx, input: { collection: "posts", contentId: "1" }, taxonomies: { getEntryTerms: async () => { throw Error("unavailable"); } } })).resolves.toMatchObject({ ok: false, error: { code: "UNAVAILABLE" } });

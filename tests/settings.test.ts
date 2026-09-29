@@ -33,6 +33,7 @@ describe("loadSettings", () => {
 			payTo: "",
 			network: "",
 			edgeTrust: "none",
+			freeByDefault: false,
 		});
 		expect(settings.humans).toEqual({ mode: "off", plans: [] });
 	});
