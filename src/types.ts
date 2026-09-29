@@ -8,6 +8,7 @@ export type StripeEnvironment = "live" | "test";
 export type AgentMode = "off" | "tokens-only" | "paid";
 export type AgentRail = "origin-x402" | "gateway";
 export type HumanMode = "off" | "stripe" | "delegate";
+export type AccessPolicy = "public" | "agents-pay" | "members" | "members-only";
 
 export interface AgentSettings {
 	mode: AgentMode;
@@ -66,6 +67,9 @@ export interface ContentRestrictionRecord {
 	title?: string | null;
 	requiredPlanSlugs?: string[];
 	productIds?: string[];
+	policy: AccessPolicy;
+	agentPrice?: string | null;
+	passEligible?: boolean;
 	source?: "manual";
 	createdAt: string;
 	updatedAt?: string;
@@ -76,8 +80,23 @@ export interface TaxonomyRestrictionRecord {
 	termId: string;
 	requiredPlanSlugs?: string[];
 	productIds?: string[];
+	policy: AccessPolicy;
+	agentPrice?: string | null;
+	passEligible?: boolean;
 	createdAt: string;
 	updatedAt?: string;
+}
+
+export interface ReceiptRecord {
+	entryId: string;
+	collectionSlug: string;
+	slug: string;
+	rail: "origin-x402" | "gateway";
+	payer: string;
+	amount: string;
+	network: "eip155:84532" | "eip155:8453";
+	transaction: string;
+	createdAt: string;
 }
 
 export interface MemberSessionState {

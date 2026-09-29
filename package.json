@@ -13,7 +13,8 @@
     ".": "./src/index.ts",
     "./plugin": "./src/plugin.ts",
     "./admin": "./src/admin.tsx",
-    "./plans": "./src/plans.ts"
+    "./plans": "./src/plans.ts",
+    "./resolver": "./src/resolver.ts"
   },
   "peerDependencies": {
     "emdash": ">=0.38.0",
@@ -21,9 +22,16 @@
   },
   "devDependencies": {
     "@types/react": "^19.2.0",
+    "@x402/core": "2.27.0",
+    "@x402/evm": "2.27.0",
+    "@x402/fetch": "2.27.0",
     "emdash": "0.38.0",
     "react": "^19.2.0",
     "typescript": "^5.9.0",
+    "viem": "2.56.8",
     "vitest": "^4.1.9"
+  },
+  "dependencies": {
+    "@emdash-cms/x402": "0.39.1"
   }
 }

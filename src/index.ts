@@ -9,7 +9,7 @@ export function paidAccess() {
 		entrypoint: "emdash-paid-access/plugin",
 		adminEntry: "emdash-paid-access/admin",
 		options: {},
-		capabilities: ["network:request", "email:send", "content:read"],
+		capabilities: ["network:request", "email:send", "content:read", "taxonomies:read"],
 		allowedHosts: ["api.stripe.com", "x402.org", "api.cloudflare.com"],
 		storage: {
 			restrictions: { indexes: ["contentId", "collectionSlug", "slug"] },
@@ -17,6 +17,7 @@ export function paidAccess() {
 			customers: { indexes: ["email"] },
 			authTokens: { indexes: ["email", "expiresAt"] },
 			sessions: { indexes: ["email", "expiresAt"] },
+			receipts: { indexes: ["entryId", "payer", "transaction", "createdAt"] },
 		},
 		adminPages: [
 			{ path: "/settings", label: "Paid Access Settings" },

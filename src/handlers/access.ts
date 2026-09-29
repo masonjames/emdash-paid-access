@@ -4,10 +4,11 @@
 
 import { PluginRouteError } from "emdash";
 
-import type { AccessDecision, ContentRestrictionRecord } from "../types.js";
+import type { AccessDecision } from "../types.js";
 import { getCustomerRecordByEmail, upsertCustomerRecord } from "../customers.js";
+import { getEntryRestrictions } from "../restrictions.js";
 import { StripeClient } from "../stripe.js";
-import { isRecord, normalizeStringArray, parsePlanSlugs, uniqueStrings, unwrapStoredRecord } from "../utils.js";
+import { isRecord, parsePlanSlugs, uniqueStrings } from "../utils.js";
 import { getSessionEmail } from "./auth.js";
 import { loadSettings, resolveRequiredProductIds } from "./settings.js";
 
@@ -41,45 +42,6 @@ function readAccessInput(ctx: any) {
 	};
 }
 
-function normalizeRestrictionRecord(record: unknown): ContentRestrictionRecord | null {
-	const data = unwrapStoredRecord<ContentRestrictionRecord>(record);
-	if (!data || typeof data.contentId !== "string" || typeof data.collectionSlug !== "string") {
-		return null;
-	}
-
-	return {
-		contentId: data.contentId,
-		collectionSlug: data.collectionSlug,
-		slug: typeof data.slug === "string" ? data.slug : null,
-		title: typeof data.title === "string" ? data.title : null,
-		requiredPlanSlugs: parsePlanSlugs(data.requiredPlanSlugs),
-		productIds: normalizeStringArray(data.productIds),
-		source: data.source === "manual" ? "manual" : "manual",
-		createdAt: typeof data.createdAt === "string" ? data.createdAt : new Date().toISOString(),
-		updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : data.createdAt,
-	};
-}
-
-async function getRestrictionRecords(
-	ctx: any,
-	collectionSlug: string,
-	contentId: string,
-	slug: string | null,
-): Promise<ContentRestrictionRecord[]> {
-	const records: ContentRestrictionRecord[] = [];
-	const primary = normalizeRestrictionRecord(await ctx.storage.restrictions.get(`${collectionSlug}:${contentId}`));
-	if (primary) {
-		records.push(primary);
-	}
-	if (slug && slug !== contentId) {
-		const legacy = normalizeRestrictionRecord(await ctx.storage.restrictions.get(`${collectionSlug}:${slug}`));
-		if (legacy) {
-			records.push(legacy);
-		}
-	}
-	return records;
-}
-
 export async function accessHandler(ctx: any): Promise<AccessDecision | { ok: false; error: string }> {
 	const settings = await loadSettings(ctx);
 	if (settings.humans.mode === "off") {
@@ -101,9 +63,12 @@ export async function accessHandler(ctx: any): Promise<AccessDecision | { ok: fa
 		return { ok: false, error: "contentId and collectionSlug are required." };
 	}
 
-	const restrictionRecords = await getRestrictionRecords(ctx, collectionSlug, contentId, slug);
-	const restrictionPlanSlugs = restrictionRecords.flatMap((record) => record.requiredPlanSlugs || []);
-	const restrictionProductIds = restrictionRecords.flatMap((record) => record.productIds || []);
+	const restrictionRecords = await getEntryRestrictions(ctx, collectionSlug, contentId, slug);
+	const humanRestrictionRecords = restrictionRecords.filter(
+		(record) => record.policy === "members" || record.policy === "members-only",
+	);
+	const restrictionPlanSlugs = humanRestrictionRecords.flatMap((record) => record.requiredPlanSlugs || []);
+	const restrictionProductIds = humanRestrictionRecords.flatMap((record) => record.productIds || []);
 	const validPlanSlugs = settings.humans.plans.map((plan) => plan.slug);
 	const requiredPlanSlugs = uniqueStrings([
 		...restrictionPlanSlugs,

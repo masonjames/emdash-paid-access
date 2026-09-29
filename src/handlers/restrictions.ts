@@ -2,46 +2,12 @@
 // Modified by Mason James, 2026-09-23.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-import type { ContentRestrictionRecord, TaxonomyRestrictionRecord } from "../types.js";
-import { parsePlanSlugs, normalizeStringArray, nowIso, unwrapStoredRecord } from "../utils.js";
+import { normalizeAgentPrice, normalizeContentRestriction, normalizeTaxonomyRestriction } from "../restrictions.js";
+import type { AccessPolicy, ContentRestrictionRecord } from "../types.js";
+import { parsePlanSlugs, normalizeStringArray, nowIso } from "../utils.js";
 import { loadSettings } from "./settings.js";
 
-function normalizeContentRestriction(record: unknown): ContentRestrictionRecord | null {
-	const data = unwrapStoredRecord<ContentRestrictionRecord>(record);
-	if (!data || typeof data.contentId !== "string" || typeof data.collectionSlug !== "string") {
-		return null;
-	}
-
-	const createdAt = typeof data.createdAt === "string" ? data.createdAt : nowIso();
-	return {
-		contentId: data.contentId,
-		collectionSlug: data.collectionSlug,
-		slug: typeof data.slug === "string" ? data.slug : null,
-		title: typeof data.title === "string" ? data.title : null,
-		requiredPlanSlugs: parsePlanSlugs(data.requiredPlanSlugs),
-		productIds: normalizeStringArray(data.productIds),
-		source: "manual",
-		createdAt,
-		updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : createdAt,
-	};
-}
-
-function normalizeTaxonomyRestriction(record: unknown): TaxonomyRestrictionRecord | null {
-	const data = unwrapStoredRecord<TaxonomyRestrictionRecord>(record);
-	if (!data || typeof data.taxonomyName !== "string" || typeof data.termId !== "string") {
-		return null;
-	}
-
-	const createdAt = typeof data.createdAt === "string" ? data.createdAt : nowIso();
-	return {
-		taxonomyName: data.taxonomyName,
-		termId: data.termId,
-		requiredPlanSlugs: parsePlanSlugs(data.requiredPlanSlugs),
-		productIds: normalizeStringArray(data.productIds),
-		createdAt,
-		updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : createdAt,
-	};
-}
+const POLICIES: AccessPolicy[] = ["public", "agents-pay", "members", "members-only"];
 
 export async function restrictionsHandler(ctx: any) {
 	const method = ctx.request.method;
@@ -110,6 +76,19 @@ export async function restrictionsHandler(ctx: any) {
 		if (requestedPlanSlugs.length !== requiredPlanSlugs.length) {
 			return { ok: false, error: "requiredPlanSlugs contains an unknown plan." };
 		}
+		if (body.policy != null && (typeof body.policy !== "string" || !POLICIES.includes(body.policy as AccessPolicy))) {
+			return { ok: false, error: "Invalid policy." };
+		}
+		const policy = typeof body.policy === "string"
+			? body.policy as AccessPolicy
+			: requiredPlanSlugs.length > 0 ? "members" : "public";
+		const agentPrice = normalizeAgentPrice(body.agentPrice);
+		if (body.agentPrice != null && body.agentPrice !== "" && !agentPrice) {
+			return { ok: false, error: "agentPrice must be a dollar amount with at most six decimals." };
+		}
+		if ((policy === "agents-pay" || policy === "members") && !agentPrice) {
+			return { ok: false, error: "A valid agentPrice is required for a policy sold to agents." };
+		}
 		if (body.type === "taxonomy") {
 			const taxonomyName = typeof body.taxonomyName === "string" ? body.taxonomyName : "";
 			const termId = typeof body.termId === "string" ? body.termId : "";
@@ -123,6 +102,9 @@ export async function restrictionsHandler(ctx: any) {
 				termId,
 				requiredPlanSlugs,
 				productIds: normalizeStringArray(body.productIds),
+				policy,
+				agentPrice,
+				passEligible: body.passEligible === true,
 				createdAt: existing?.createdAt ?? nowIso(),
 				updatedAt: nowIso(),
 			});
@@ -144,6 +126,9 @@ export async function restrictionsHandler(ctx: any) {
 			title: typeof body.title === "string" ? body.title : null,
 			requiredPlanSlugs,
 			productIds: normalizeStringArray(body.productIds),
+			policy,
+			agentPrice,
+			passEligible: body.passEligible === true,
 			source: "manual",
 			createdAt: existing?.createdAt ?? nowIso(),
 			updatedAt: nowIso(),

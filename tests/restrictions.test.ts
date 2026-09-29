@@ -33,4 +33,73 @@ describe("settings-defined restriction plans", () => {
 		});
 		expect(put).not.toHaveBeenCalled();
 	});
+
+	it("stores per-entry policy, agent price and pass eligibility", async () => {
+		const put = vi.fn();
+		const ctx = {
+			input: {
+				collectionSlug: "posts",
+				contentId: "post-1",
+				slug: "paid-post",
+				policy: "agents-pay",
+				agentPrice: "$0.025",
+				passEligible: true,
+			},
+			request: new Request("https://site.test/_emdash/api/plugins/paid-access/admin/restrictions", { method: "POST" }),
+			kv: { get: async () => null },
+			storage: {
+				restrictions: { get: vi.fn(), put },
+				taxonomyRestrictions: { get: vi.fn(), put: vi.fn() },
+			},
+		};
+		await expect(restrictionsHandler(ctx)).resolves.toMatchObject({ ok: true });
+		expect(put).toHaveBeenCalledWith("posts:post-1", expect.objectContaining({
+			policy: "agents-pay",
+			agentPrice: "$0.025",
+			passEligible: true,
+		}));
+	});
+
+	it("requires a valid price for agent-sale policies", async () => {
+		const put = vi.fn();
+		const ctx = {
+			input: { collectionSlug: "posts", contentId: "post-1", policy: "members", agentPrice: "free" },
+			request: new Request("https://site.test/_emdash/api/plugins/paid-access/admin/restrictions", { method: "POST" }),
+			kv: { get: async () => null },
+			storage: {
+				restrictions: { get: vi.fn(), put },
+				taxonomyRestrictions: { get: vi.fn(), put: vi.fn() },
+			},
+		};
+		await expect(restrictionsHandler(ctx)).resolves.toEqual({
+			ok: false,
+			error: "agentPrice must be a dollar amount with at most six decimals.",
+		});
+		expect(put).not.toHaveBeenCalled();
+	});
+
+	it("stores the same policy fields on taxonomy rules", async () => {
+		const put = vi.fn();
+		const ctx = {
+			input: {
+				type: "taxonomy",
+				taxonomyName: "category",
+				termId: "premium",
+				policy: "members-only",
+				passEligible: true,
+			},
+			request: new Request("https://site.test/_emdash/api/plugins/paid-access/admin/restrictions", { method: "POST" }),
+			kv: { get: async () => null },
+			storage: {
+				restrictions: { get: vi.fn(), put: vi.fn() },
+				taxonomyRestrictions: { get: vi.fn(), put },
+			},
+		};
+		await expect(restrictionsHandler(ctx)).resolves.toEqual({ ok: true });
+		expect(put).toHaveBeenCalledWith("category:premium", expect.objectContaining({
+			policy: "members-only",
+			agentPrice: null,
+			passEligible: true,
+		}));
+	});
 });

@@ -4,3 +4,5 @@
 allowBuilds:
   esbuild: true
   sharp: true
+minimumReleaseAgeExclude:
+  - '@emdash-cms/x402@0.39.1'
