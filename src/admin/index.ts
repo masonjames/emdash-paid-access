@@ -10,6 +10,7 @@ import { overview } from "./overview.js";
 import { receiptsPage } from "./receipts.js";
 import { rulesInteraction, rulesPage } from "./rules.js";
 import { settingsInteraction, settingsPage } from "./settings.js";
+import { loadSettings } from "../handlers/settings.js";
 import { failure, interaction, str } from "./shared.js";
 
 export async function adminHandler(route: RouteContext, ctx: PluginContext): Promise<BlockResponse> {
@@ -36,5 +37,5 @@ export async function editorHandler(route: RouteContext, ctx: PluginContext): Pr
 export async function coexistenceReport(route: RouteContext, ctx: PluginContext) {
 	if (route.request.method !== "POST" || !isRecord(route.input) || typeof route.input.legacyPluginPresent !== "boolean") return routeError("BAD_REQUEST", "Report legacyPluginPresent as true or false, then try again.");
 	await ctx.kv.set("state:legacyPluginPresent", route.input.legacyPluginPresent);
-	return { ok: true };
+	return { ok: true, humanMode: (await loadSettings(ctx)).humans.mode };
 }

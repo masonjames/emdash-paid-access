@@ -97,7 +97,8 @@ export async function agentContextHandler(routeCtx: RouteContext, ctx: PluginCon
 		(input.slug != null && typeof input.slug !== "string")) return routeError("BAD_REQUEST", "collection and contentId are required; slug must be a string.");
 	try {
 		const [settings, rules] = await Promise.all([loadSettings(ctx), getEntryRestrictions(ctx, input.collection, input.contentId, input.slug as string | null | undefined)]);
-		return { rules: rules.map(({ policy, agentPrice }) => ({ policy, agentPrice })), agents: settings.agents, price: highestAgentPrice(rules) };
+		const canonicalUrl = await ctx.content?.getPublicUrl?.(input.collection, input.contentId).catch(() => null) ?? null;
+		return { canonicalUrl, rules: rules.map(({ policy, agentPrice }) => ({ policy, agentPrice })), agents: settings.agents, price: highestAgentPrice(rules) };
 	} catch {
 		return routeError("UNAVAILABLE", "Unable to resolve agent context.");
 	}
@@ -120,7 +121,7 @@ export async function recordReceiptHandler(routeCtx: RouteContext, ctx: PluginCo
 export async function plansHandler(_routeCtx: RouteContext, ctx: PluginContext) {
 	const settings = await loadSettings(ctx);
 	return {
-		plans: settings.humans.plans.map(({ slug, name, description, monthlyLabel, yearlyLabel, trialLabel }) =>
+		plans: (await ctx.kv?.get("state:legacyPluginPresent") === true ? [] : settings.humans.plans).map(({ slug, name, description, monthlyLabel, yearlyLabel, trialLabel }) =>
 			({ slug, name, description, monthlyLabel, yearlyLabel, trialLabel }))
 	};
 }

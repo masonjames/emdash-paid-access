@@ -33,3 +33,8 @@ describe("human rule decisions", () => {
 		await expect(invoke(accessHandler, context("delegate"))).resolves.toMatchObject({ delegated: true, restricted: false, hasAccess: true });
 	});
 });
+
+it("uses the trusted coexistence report to delegate forced Stripe before querying membership", async () => {
+	const ctx = { ...context("stripe", "members"), kv: { get: async () => true } };
+	await expect(invoke(accessHandler, ctx)).resolves.toMatchObject({ humanMode: "stripe", delegated: true, restricted: true, hasAccess: false, showExcerpts: true });
+});

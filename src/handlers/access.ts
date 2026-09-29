@@ -3,11 +3,11 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 import type { PluginContext } from "emdash/plugin";
-import type { RouteContext } from "../types.js";
+import type { PaidAccessSettings, RouteContext } from "../types.js";
 
 import type { AccessDecision } from "../types.js";
 import { getCustomerRecordByEmail, upsertCustomerRecord } from "../customers.js";
-import { getEntryRestrictions } from "../restrictions.js";
+import { getEntryRestrictions, highestAgentPrice } from "../restrictions.js";
 import { StripeClient } from "../stripe.js";
 import { isRecord, parsePlanSlugs, uniqueStrings } from "../utils.js";
 import { getSessionEmail } from "./auth.js";
@@ -23,14 +23,23 @@ function readAccessInput(routeCtx: RouteContext) {
 	};
 }
 
-export async function accessHandler(routeCtx: RouteContext, ctx: PluginContext): Promise<AccessDecision | { ok: false; error: string }> {
+export async function accessHandler(routeCtx: RouteContext, ctx: PluginContext) {
 	const settings = await loadSettings(ctx);
-	const { contentId, collectionSlug, slug, requiredPlanSlugs: callerRequiredPlanSlugs } = readAccessInput(routeCtx);
-	if (!contentId || !collectionSlug) {
-		return { ok: false, error: "contentId and collectionSlug are required." };
+	const humanMode = settings.humans.mode;
+	// Only the trusted companion can report coexistence through the private route.
+	if (humanMode === "stripe" && await ctx.kv?.get("state:legacyPluginPresent") === true) {
+		settings.humans = { ...settings.humans, mode: "delegate" };
 	}
+	const input = readAccessInput(routeCtx);
+	if (!input.contentId || !input.collectionSlug) return { ok: false, error: "contentId and collectionSlug are required." };
+	const rules = await getEntryRestrictions(ctx, input.collectionSlug, input.contentId, input.slug);
+	const decision = await resolveHumanAccess(routeCtx, ctx, settings, rules);
+	return { ...decision, humanMode, showExcerpts: settings.showExcerpts,
+		agentsSold: settings.agents.mode === "paid" && Boolean(highestAgentPrice(rules)) && rules.some(rule => rule.policy === "agents-pay" || rule.policy === "members") && !rules.some(rule => rule.policy === "members-only") };
+}
 
-	const restrictionRecords = await getEntryRestrictions(ctx, collectionSlug, contentId, slug);
+async function resolveHumanAccess(routeCtx: RouteContext, ctx: PluginContext, settings: PaidAccessSettings, restrictionRecords: Awaited<ReturnType<typeof getEntryRestrictions>>): Promise<AccessDecision | { ok: false; error: string }> {
+	const { requiredPlanSlugs: callerRequiredPlanSlugs } = readAccessInput(routeCtx);
 	const humanRestrictionRecords = restrictionRecords.filter(
 		(record) => record.policy === "members" || record.policy === "members-only",
 	);

@@ -1,0 +1,36 @@
+---
+// Copyright 2026 Mason James.
+// SPDX-License-Identifier: GPL-2.0-or-later
+interface Props { redirect: string }
+const { redirect } = Astro.props;
+const plans = await Astro.locals.paidAccess.plans();
+const { accountPath } = Astro.locals.paidAccess.options;
+---
+{plans.length > 0 && <div class="phb-pricing" data-phb-state="pricing">
+	{plans.map(plan => <section class="phb-plan">
+		<h3>{plan.name}</h3>
+		{plan.description && <p>{plan.description}</p>}
+		<form method="post" action={`${accountPath}/checkout`}>
+			<input type="hidden" name="planSlug" value={plan.slug} />
+			<input type="hidden" name="redirect" value={redirect} />
+			<label>Email <input type="email" name="email" autocomplete="email" required /></label>
+			{plan.monthlyLabel && <button name="billingInterval" value="monthly" type="submit">Monthly {plan.monthlyLabel}</button>}
+			{plan.yearlyLabel && <button name="billingInterval" value="yearly" type="submit">Yearly {plan.yearlyLabel}</button>}
+		</form>
+	</section>)}
+</div>}
+<style>
+.phb-pricing { display: grid; gap: 1rem; color: #202124; background: #fff; }
+.phb-plan { padding: 1rem; border: 1px solid var(--phb-border, #767676); border-radius: var(--phb-radius, .5rem); }
+p { color: var(--phb-muted, #525252); }
+form, label { display: grid; gap: .75rem; }
+input, button { font: inherit; padding: .65rem; border: 1px solid var(--phb-border, #767676); border-radius: var(--phb-radius, .5rem); }
+input { color: #202124; background: #fff; }
+button { background: var(--phb-accent, #174ea6); color: #fff; cursor: pointer; }
+:focus-visible { outline: 3px solid var(--phb-accent, #174ea6); outline-offset: 3px; }
+@media (prefers-color-scheme: dark) {
+	.phb-pricing { color: #f5f5f5; background: #181818; }
+	p { color: var(--phb-muted, #c5c5c5); }
+	:focus-visible { outline-color: var(--phb-accent, #a8c7fa); }
+}
+</style>

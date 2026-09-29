@@ -56,7 +56,7 @@ describe("settings screens", () => {
 	it("stores the private runtime hint and refuses Stripe on both admin and shared settings paths", async () => {
 		const ctx = fixture(); const request = new Request("https://site.test/", { method: "POST" });
 		expect(await invoke(coexistenceReport, { ...ctx, request, input: { legacyPluginPresent: "true" } })).toMatchObject({ ok: false });
-		expect(await invoke(coexistenceReport, { ...ctx, request, input: { legacyPluginPresent: true } })).toEqual({ ok: true });
+		expect(await invoke(coexistenceReport, { ...ctx, request, input: { legacyPluginPresent: true } })).toEqual({ ok: true, humanMode: "off" });
 		const screen = await admin(ctx, page("/settings")); expect(JSON.stringify(screen)).toContain("Restrict With Stripe is active");
 		const radio = flatten(screen.blocks).filter(b => b.type === "form").flatMap(b => b.fields).find(f => f.action_id === "humans_mode");
 		expect(radio).toMatchObject({ options: [{ value: "off" }, { value: "delegate" }] });

@@ -1,0 +1,26 @@
+---
+// Copyright 2026 Mason James.
+// SPDX-License-Identifier: GPL-2.0-or-later
+import { PortableText } from "emdash/ui";
+import type { PortableTextBlock } from "emdash/client";
+import { canRenderBody } from "emdash-paid-access/astro/runtime";
+import Paywall from "./Paywall.astro";
+interface Props {
+	entry: { id: string; data: { id?: string; content?: PortableTextBlock[] } };
+	collection?: string;
+	excerpt?: string;
+	redirect?: string;
+}
+const { entry, collection = "posts", excerpt, redirect = Astro.url.pathname } = Astro.props;
+const decision = await Astro.locals.paidAccess.access({ collection, id: entry.data.id ?? entry.id, slug: entry.id });
+Astro.response.headers.set("Cache-Control", "private, no-store");
+---
+{canRenderBody(decision) ? <div class="phb-content"><PortableText value={entry.data.content ?? []} /></div> :
+	<div class="phb-locked" data-phb-state="locked">
+		{excerpt && decision.showExcerpts === true && <p class="phb-excerpt">{excerpt}</p>}
+		<slot name="locked"><Paywall decision={decision} redirect={redirect} collection={collection} slug={entry.id} /></slot>
+	</div>}
+<style>
+.phb-locked { border: 1px solid var(--phb-border, #767676); border-radius: var(--phb-radius, .5rem); padding: 1.5rem; }
+.phb-excerpt { line-height: 1.6; }
+</style>

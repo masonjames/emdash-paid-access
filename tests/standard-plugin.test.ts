@@ -41,6 +41,7 @@ describe("standard plugin companion seams", () => {
 	it("returns private context including unioned rules and the highest price", async () => {
 		const ctx = context({ agentsMode: "paid", agentsNetwork: "eip155:84532" }, "agents-pay", "members-only");
 		await expect(invoke(route("agent/context").handler, { ...ctx, input: { collection: "posts", contentId: "1", slug: "post" } })).resolves.toEqual({
+			canonicalUrl: null,
 			rules: [{ policy: "agents-pay", agentPrice: "$0.01" }, { policy: "agents-pay", agentPrice: "$0.01" }, { policy: "members-only", agentPrice: "$0.05" }],
 			agents: { mode: "paid", rail: "origin-x402", payTo: "", network: "eip155:84532", edgeTrust: "none" }, price: "$0.05",
 		});
@@ -99,4 +100,15 @@ describe("discovery metadata", () => {
 		expect(await metadata({ ...ctx, settings: { get: async () => { throw Error("unavailable"); } } })).toBeNull();
 		expect(ctx.log.error).toHaveBeenCalledOnce();
 	});
+});
+
+it("resolves canonical URLs with a null fallback and suppresses coexisting plans", async () => {
+	const ctx = context({ agentsMode: "paid", humansMode: "stripe", humansPlans: MASONJAMES_PLANS });
+	const getPublicUrl = vi.fn(async () => "https://site.test/blog/post/");
+	const input = { collection: "posts", contentId: "1", slug: "post" };
+	expect(await invoke(route("agent/context").handler, { ...ctx, input, content: { getPublicUrl } })).toMatchObject({ canonicalUrl: "https://site.test/blog/post/" });
+	expect(getPublicUrl).toHaveBeenCalledWith("posts", "1");
+	getPublicUrl.mockRejectedValueOnce(new Error("unavailable"));
+	expect(await invoke(route("agent/context").handler, { ...ctx, input, content: { getPublicUrl } })).toMatchObject({ canonicalUrl: null });
+	expect(await invoke(route("plans").handler, { ...ctx, kv: { get: async () => true } })).toEqual({ plans: [] });
 });

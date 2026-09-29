@@ -3,7 +3,7 @@
 {
   "$schema": "./node_modules/@emdash-cms/plugin-cli/schemas/emdash-plugin.schema.json",
   "slug": "paid-access",
-  "publisher": "did:plc:neov22wblqftd3653r6cl2gl", // masonjames.bsky.social — confirm with Mason before publishing
+  "publisher": "did:plc:neov22wblqftd3653r6cl2gl", // @masonjames.com (handle verified 2026-09-29)
   "license": "GPL-2.0-or-later",
   "author": {
     "name": "Mason James",

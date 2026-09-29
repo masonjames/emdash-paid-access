@@ -3,7 +3,7 @@
 
 import type { AccessDecision, HumanMode } from "./types.js";
 
-const LEGACY_PLUGIN_ID = "restrict-with-stripe";
+export const LEGACY_PLUGIN_ID = "restrict-with-stripe";
 const LEGACY_SESSION_ROUTE = "auth/session";
 
 export type PublicPluginRouteHandler = (
@@ -11,7 +11,7 @@ export type PublicPluginRouteHandler = (
 	method: string,
 	path: string,
 	request: Request,
-) => Promise<{ success: boolean; status: number; data?: unknown; error?: unknown }>;
+) => Promise<{ success: boolean; status?: number; data?: unknown; error?: unknown }>;
 
 let cachedProbe: Promise<boolean> | undefined;
 let warnedAboutDowngrade = false;
@@ -26,7 +26,7 @@ export function probeLegacyPlugin(
 	request: Request,
 ): Promise<boolean> {
 	cachedProbe ??= handler(LEGACY_PLUGIN_ID, "GET", LEGACY_SESSION_ROUTE, request).then((result) => {
-		if (result.status === 404) return false;
+		if (result.status === 404 || (!result.success && typeof result.error === "object" && result.error !== null && "code" in result.error && result.error.code === "NOT_FOUND")) return false;
 		if (!result.success) throw new Error("Legacy membership plugin probe failed.");
 		return true;
 	}).catch((error: unknown) => {

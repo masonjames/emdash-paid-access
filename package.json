@@ -7,7 +7,7 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "build": "emdash-plugin build",
+    "build": "emdash-plugin build && tsdown",
     "validate": "emdash-plugin validate",
     "bundle": "emdash-plugin bundle"
   },
@@ -17,17 +17,42 @@
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
     },
-    "./sandbox": "./dist/plugin.mjs"
+    "./sandbox": "./dist/plugin.mjs",
+    "./astro": {
+      "types": "./dist/astro/index.d.mts",
+      "import": "./dist/astro/index.mjs"
+    },
+    "./astro/middleware": {
+      "types": "./dist/astro/middleware.d.mts",
+      "import": "./dist/astro/middleware.mjs"
+    },
+    "./astro/runtime": {
+      "types": "./dist/astro/runtime.d.mts",
+      "import": "./dist/astro/runtime.mjs"
+    },
+    "./astro/routes/agent-entry": {
+      "types": "./dist/astro/routes/agent-entry.d.mts",
+      "import": "./dist/astro/routes/agent-entry.mjs"
+    },
+    "./astro/routes/offers": {
+      "types": "./dist/astro/routes/offers.d.mts",
+      "import": "./dist/astro/routes/offers.mjs"
+    },
+    "./astro/routes/account": {
+      "types": "./dist/astro/routes/account.d.mts",
+      "import": "./dist/astro/routes/account.mjs"
+    },
+    "./components/*": "./src/components/*"
   },
   "peerDependencies": {
-    "emdash": ">=1.0.1"
+    "emdash": ">=1.0.1",
+    "astro": ">=6"
   },
   "devDependencies": {
     "@emdash-cms/blocks": "1.0.1",
     "@emdash-cms/plugin-cli": "0.13.1",
-    "@x402/core": "2.27.0",
-    "@x402/evm": "2.27.0",
     "@x402/fetch": "2.27.0",
+    "astro": "6.1.3",
     "emdash": "1.0.1",
     "tsdown": "0.20.3",
     "typescript": "^5.9.0",
@@ -35,12 +60,15 @@
     "vitest": "^4.1.9"
   },
   "dependencies": {
-    "@emdash-cms/x402": "1.0.1"
+    "@emdash-cms/x402": "1.0.1",
+    "@x402/core": "2.27.0",
+    "@x402/evm": "2.27.0"
   },
   "files": [
     "dist",
     "emdash-plugin.jsonc",
     "NOTICE.md",
-    "LICENSE"
+    "LICENSE",
+    "src/components"
   ]
 }
