@@ -35,30 +35,11 @@ export function normalizeEmail(value: unknown): string | null {
 }
 
 export function sanitizeRedirectPath(value: unknown, fallback = "/"): string {
-	if (typeof value !== "string") {
-		return fallback;
-	}
-
-	const trimmed = value.trim();
-	if (!trimmed) {
-		return fallback;
-	}
-
-	if (trimmed.startsWith("//")) {
-		return fallback;
-	}
-
-	if (trimmed.startsWith("/")) {
-		return trimmed;
-	}
-
+	if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//") || /[\\\x00-\x1f\x7f]/.test(value)) return fallback;
 	try {
-		const url = new URL(trimmed);
-		if (url.pathname.startsWith("/") && !url.pathname.startsWith("//")) {
-			return `${url.pathname}${url.search}${url.hash}`;
-		}
+		if (new URL(value, "https://paid-access.invalid").origin === "https://paid-access.invalid") return value;
 	} catch {
-		// Ignore invalid absolute URLs and fall back below.
+		// Invalid paths use the fallback.
 	}
 
 	return fallback;

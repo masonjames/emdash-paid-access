@@ -2,8 +2,6 @@
 // Modified by Mason James, 2026-09-23.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-import { PluginRouteError } from "emdash";
-
 import type { AccessDecision } from "../types.js";
 import { getCustomerRecordByEmail, upsertCustomerRecord } from "../customers.js";
 import { getEntryRestrictions } from "../restrictions.js";
@@ -44,20 +42,6 @@ function readAccessInput(ctx: any) {
 
 export async function accessHandler(ctx: any): Promise<AccessDecision | { ok: false; error: string }> {
 	const settings = await loadSettings(ctx);
-	if (settings.humans.mode === "off") {
-		return {
-			restricted: false,
-			authenticated: false,
-			hasAccess: true,
-			email: null,
-			requiredPlanSlugs: [],
-			requiredProductIds: [],
-		};
-	}
-	if (settings.humans.mode === "delegate") {
-		throw PluginRouteError.notFound("Human access is delegated to the legacy membership plugin.");
-	}
-
 	const { contentId, collectionSlug, slug, requiredPlanSlugs: callerRequiredPlanSlugs } = readAccessInput(ctx);
 	if (!contentId || !collectionSlug) {
 		return { ok: false, error: "contentId and collectionSlug are required." };
@@ -78,7 +62,19 @@ export async function accessHandler(ctx: any): Promise<AccessDecision | { ok: fa
 		...restrictionProductIds,
 		...resolveRequiredProductIds(settings.humans.plans, requiredPlanSlugs),
 	]);
-	const restricted = requiredPlanSlugs.length > 0 || requiredProductIds.length > 0;
+	const restricted = humanRestrictionRecords.length > 0 || requiredPlanSlugs.length > 0 || requiredProductIds.length > 0;
+	if (settings.humans.mode === "off" || settings.humans.mode === "delegate") {
+		return {
+			restricted,
+			authenticated: false,
+			hasAccess: !restricted,
+			email: null,
+			requiredPlanSlugs,
+			requiredProductIds,
+			...(settings.humans.mode === "delegate" ? { delegated: true } : {}),
+			...(settings.humans.mode === "off" && restricted ? { error: "Member access is turned off for this site." } : {}),
+		};
+	}
 	const email = await getSessionEmail(ctx);
 	const authenticated = Boolean(email);
 
@@ -91,6 +87,9 @@ export async function accessHandler(ctx: any): Promise<AccessDecision | { ok: fa
 			requiredPlanSlugs,
 			requiredProductIds,
 		};
+	}
+	if (requiredProductIds.length === 0) {
+		return { restricted: true, authenticated, hasAccess: false, email, requiredPlanSlugs, requiredProductIds, error: "Required plans are not configured." };
 	}
 
 	if (!authenticated || !email) {
@@ -113,18 +112,6 @@ export async function accessHandler(ctx: any): Promise<AccessDecision | { ok: fa
 			requiredPlanSlugs,
 			requiredProductIds,
 			error: "Stripe is not configured yet.",
-		};
-	}
-
-	if (requiredPlanSlugs.length > 0 && requiredProductIds.length === 0) {
-		return {
-			restricted: true,
-			authenticated: true,
-			hasAccess: false,
-			email,
-			requiredPlanSlugs,
-			requiredProductIds,
-			error: "Required plans are not mapped to Stripe products yet.",
 		};
 	}
 

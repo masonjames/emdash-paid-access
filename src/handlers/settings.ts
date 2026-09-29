@@ -83,7 +83,7 @@ export async function loadSettings(ctx: any): Promise<PaidAccessSettings> {
 	};
 }
 
-async function saveAgents(ctx: any, value: unknown): Promise<string | null> {
+function validateAgents(value: unknown): string | null {
 	if (!isRecord(value)) return "agents must be an object.";
 	if (!AGENT_MODES.includes(value.mode as AgentMode)) return "Invalid agents.mode.";
 	if (!AGENT_RAILS.includes(value.rail as AgentRail)) return "Invalid agents.rail.";
@@ -96,17 +96,10 @@ async function saveAgents(ctx: any, value: unknown): Promise<string | null> {
 	if (value.rail === "gateway" && value.edgeTrust === "none") {
 		return "Gateway rail requires a configured edgeTrust method.";
 	}
-	await Promise.all([
-		ctx.kv.set("agents_mode", value.mode),
-		ctx.kv.set("agents_rail", value.rail),
-		ctx.kv.set("agents_pay_to", value.payTo.trim()),
-		ctx.kv.set("agents_network", value.network),
-		ctx.kv.set("agents_edge_trust", value.edgeTrust.trim() || "none"),
-	]);
 	return null;
 }
 
-async function saveHumans(ctx: any, value: unknown, legacyPluginPresent: boolean): Promise<string | null> {
+function validateHumans(value: unknown, legacyPluginPresent: boolean): string | null {
 	if (!isRecord(value)) return "humans must be an object.";
 	if (!HUMAN_MODES.includes(value.mode as HumanMode)) return "Invalid humans.mode.";
 	if (value.mode === "stripe" && legacyPluginPresent) {
@@ -114,10 +107,6 @@ async function saveHumans(ctx: any, value: unknown, legacyPluginPresent: boolean
 	}
 	const plans = normalizeHumanPlans(value.plans);
 	if (!plans) return "humans.plans must be a valid plan catalog with unique slugs.";
-	await Promise.all([
-		ctx.kv.set("humans_mode", value.mode),
-		ctx.kv.set("humans_plans", plans),
-	]);
 	return null;
 }
 
@@ -132,6 +121,17 @@ export async function settingsHandler(ctx: any) {
 	}
 
 	const body = isRecord(ctx.input) ? ctx.input : {};
+	const error = body.agents !== undefined ? validateAgents(body.agents) : null;
+	const humanError = body.humans !== undefined ? validateHumans(body.humans, body.legacyPluginPresent === true) : null;
+	if (error || humanError) return { ok: false, error: error || humanError };
+	for (const field of ["stripeSecretKey", "stripePublishableKey", "stripeAccountId", "stripeEnvironment"] as const) {
+		if (body[field] !== undefined && typeof body[field] !== "string") return { ok: false, error: `${field} must be a string.` };
+	}
+	if (body.stripeEnvironment !== undefined && !["live", "test", "sandbox"].includes(body.stripeEnvironment as string)) {
+		return { ok: false, error: "Invalid stripeEnvironment." };
+	}
+	if (body.showExcerpts !== undefined && typeof body.showExcerpts !== "boolean") return { ok: false, error: "showExcerpts must be a boolean." };
+	// legacyPluginPresent is a UI hint; phase 3's Astro runtime downgrade is the real coexistence guard.
 	if (body.disconnect === true) {
 		await Promise.all([
 			ctx.kv.delete("stripe_secret_key"),
@@ -143,12 +143,19 @@ export async function settingsHandler(ctx: any) {
 	}
 
 	if (body.agents !== undefined) {
-		const error = await saveAgents(ctx, body.agents);
-		if (error) return { ok: false, error };
+		const value = body.agents as Record<string, string>;
+		await Promise.all([
+			ctx.kv.set("agents_mode", value.mode), ctx.kv.set("agents_rail", value.rail),
+			ctx.kv.set("agents_pay_to", value.payTo.trim()), ctx.kv.set("agents_network", value.network),
+			ctx.kv.set("agents_edge_trust", value.edgeTrust.trim() || "none"),
+		]);
 	}
 	if (body.humans !== undefined) {
-		const error = await saveHumans(ctx, body.humans, body.legacyPluginPresent === true);
-		if (error) return { ok: false, error };
+		const value = body.humans as Record<string, unknown>;
+		await Promise.all([
+			ctx.kv.set("humans_mode", value.mode),
+			ctx.kv.set("humans_plans", normalizeHumanPlans(value.plans)),
+		]);
 	}
 
 	if (typeof body.stripeSecretKey === "string" && !body.stripeSecretKey.startsWith("sk_••••")) {

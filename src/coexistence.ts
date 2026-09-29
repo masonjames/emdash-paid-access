@@ -29,6 +29,9 @@ export function probeLegacyPlugin(
 		if (result.status === 404) return false;
 		if (!result.success) throw new Error("Legacy membership plugin probe failed.");
 		return true;
+	}).catch((error: unknown) => {
+		cachedProbe = undefined;
+		throw error;
 	});
 	return cachedProbe;
 }

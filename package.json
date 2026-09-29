@@ -17,7 +17,7 @@
     "./resolver": "./src/resolver.ts"
   },
   "peerDependencies": {
-    "emdash": ">=0.38.0",
+    "emdash": ">=1.0.1",
     "react": ">=19.0.0"
   },
   "devDependencies": {
@@ -25,13 +25,13 @@
     "@x402/core": "2.27.0",
     "@x402/evm": "2.27.0",
     "@x402/fetch": "2.27.0",
-    "emdash": "0.38.0",
+    "emdash": "1.0.1",
     "react": "^19.2.0",
     "typescript": "^5.9.0",
     "viem": "2.56.8",
     "vitest": "^4.1.9"
   },
   "dependencies": {
-    "@emdash-cms/x402": "0.39.1"
+    "@emdash-cms/x402": "1.0.1"
   }
 }

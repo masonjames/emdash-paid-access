@@ -38,7 +38,6 @@ export interface PaidAccessSettings {
 
 export interface AuthTokenRecord {
 	email: string;
-	token: string;
 	redirect: string;
 	intent: "signin" | "subscribe-free";
 	expiresAt: string;
@@ -48,7 +47,6 @@ export interface AuthTokenRecord {
 
 export interface SessionRecord {
 	email: string;
-	sessionToken: string;
 	expiresAt: string;
 	createdAt: string;
 }
@@ -94,7 +92,7 @@ export interface ReceiptRecord {
 	rail: "origin-x402" | "gateway";
 	payer: string;
 	amount: string;
-	network: "eip155:84532" | "eip155:8453";
+	network: string;
 	transaction: string;
 	createdAt: string;
 }
@@ -105,6 +103,7 @@ export interface MemberSessionState {
 }
 
 export interface AccessDecision {
+	delegated?: boolean;
 	restricted: boolean;
 	authenticated: boolean;
 	hasAccess: boolean;

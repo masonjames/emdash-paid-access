@@ -12,6 +12,25 @@ export const AGENT_TOKEN_PREFIX = "phb_at_";
 const AUTH_TOKEN_TTL_MS = 15 * 60 * 1000;
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const SESSION_COOKIE_NAME = "phb_session";
+const RATE_ERROR = "Please wait a minute before requesting another link.";
+
+async function hashToken(token: string): Promise<string> {
+	const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+	return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function claimLinkRate(ctx: any, key: string): Promise<boolean> {
+	for (let attempt = 0; attempt < 3; attempt++) {
+		const current = await ctx.kv.getVersioned(key);
+		const now = Date.now();
+		const times: number[] = Array.isArray(current?.value)
+			? current.value.filter((time: unknown): time is number => typeof time === "number" && time > now - 3_600_000)
+			: [];
+		if (times.length >= 5 || times.some((time) => time > now - 60_000)) return false;
+		if ((await ctx.kv.compareAndSet(key, current?.revision ?? null, [...times, now])).applied) return true;
+	}
+	return false;
+}
 
 export async function isEmailReady(ctx: any): Promise<boolean> {
 	// emdash >= 0.16: ctx.email is undefined until an email:deliver provider
@@ -24,16 +43,15 @@ async function invalidateAuthTokensForEmail(ctx: any, email: string) {
 	await Promise.all(tokens.items.map((item: { id: string }) => ctx.storage.authTokens.delete(item.id)));
 }
 
-export async function createSession(ctx: any, email: string): Promise<SessionRecord> {
+export async function createSession(ctx: any, email: string): Promise<SessionRecord & { sessionToken: string }> {
 	const sessionToken = generateToken(SESSION_TOKEN_PREFIX, 32);
 	const session: SessionRecord = {
 		email,
-		sessionToken,
 		expiresAt: new Date(Date.now() + SESSION_TTL_MS).toISOString(),
 		createdAt: nowIso(),
 	};
-	await ctx.storage.sessions.put(sessionToken, session);
-	return session;
+	await ctx.storage.sessions.put(await hashToken(sessionToken), session);
+	return { ...session, sessionToken };
 }
 
 export async function getSessionRecord(ctx: any): Promise<SessionRecord | null> {
@@ -42,13 +60,14 @@ export async function getSessionRecord(ctx: any): Promise<SessionRecord | null> 
 		return null;
 	}
 
-	const session = unwrapStoredRecord<SessionRecord>(await ctx.storage.sessions.get(sessionToken));
+	const key = await hashToken(sessionToken);
+	const session = unwrapStoredRecord<SessionRecord>(await ctx.storage.sessions.get(key));
 	if (!session) {
 		return null;
 	}
 
 	if (new Date(session.expiresAt).getTime() <= Date.now()) {
-		await ctx.storage.sessions.delete(sessionToken);
+		await ctx.storage.sessions.delete(key);
 		return null;
 	}
 
@@ -81,6 +100,7 @@ function buildVerifyUrl(ctx: any, token: string, redirect: string): string {
 
 function buildEmailMessage(ctx: any, verifyUrl: string, intent: "signin" | "subscribe-free") {
 	const siteName = ctx.site?.name || "EmDash";
+	const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character] || character);
 	const actionLabel = intent === "subscribe-free" ? "Confirm your subscription" : "Sign in";
 	const subject = intent === "subscribe-free" ? `Confirm your subscription to ${siteName}` : `Sign in to ${siteName}`;
 	const text = [
@@ -91,8 +111,8 @@ function buildEmailMessage(ctx: any, verifyUrl: string, intent: "signin" | "subs
 		"This link expires in 15 minutes.",
 	].join("\n");
 	const html = [
-		`<p>${actionLabel} for <strong>${siteName}</strong>.</p>`,
-		`<p><a href="${verifyUrl}" style="display:inline-block;padding:10px 20px;background:#111827;color:#ffffff;text-decoration:none;border-radius:999px;font-weight:600">${actionLabel}</a></p>`,
+		`<p>${escapeHtml(actionLabel)} for <strong>${escapeHtml(siteName)}</strong>.</p>`,
+		`<p><a href="${escapeHtml(verifyUrl)}" style="display:inline-block;padding:10px 20px;background:#111827;color:#ffffff;text-decoration:none;border-radius:999px;font-weight:600">${escapeHtml(actionLabel)}</a></p>`,
 		"<p style=\"color:#6b7280;font-size:13px\">This link expires in 15 minutes.</p>",
 	].join("");
 
@@ -115,14 +135,10 @@ export async function sendMagicLink(
 		throw new Error("Email delivery is not configured for this site yet.");
 	}
 
-	const redirect = sanitizeRedirectPath(
-		options.redirect,
-		options.intent === "subscribe-free" ? "/resources/#subscribe" : "/",
-	);
+	const redirect = sanitizeRedirectPath(options.redirect);
 	const token = generateToken(MAGIC_LINK_TOKEN_PREFIX, 40);
 	const authToken: AuthTokenRecord = {
 		email,
-		token,
 		redirect,
 		intent: options.intent,
 		expiresAt: new Date(Date.now() + AUTH_TOKEN_TTL_MS).toISOString(),
@@ -131,7 +147,7 @@ export async function sendMagicLink(
 	};
 
 	await invalidateAuthTokensForEmail(ctx, email);
-	await ctx.storage.authTokens.put(token, authToken);
+	await ctx.storage.authTokens.put(await hashToken(token), authToken);
 
 	const verifyUrl = buildVerifyUrl(ctx, token, redirect);
 	const message = buildEmailMessage(ctx, verifyUrl, options.intent);
@@ -166,7 +182,12 @@ export async function sendLinkHandler(ctx: any) {
 	}
 
 	const intent = body.intent === "subscribe-free" ? "subscribe-free" : "signin";
-	const redirect = sanitizeRedirectPath(body.redirect, intent === "subscribe-free" ? "/resources/#subscribe" : "/");
+	const redirect = sanitizeRedirectPath(body.redirect);
+	const emailKey = `link-rate:email:${await hashToken(email)}`;
+	if (!(await claimLinkRate(ctx, emailKey))) return { ok: false, error: RATE_ERROR };
+	if (typeof ctx.requestMeta?.ip === "string" && ctx.requestMeta.ip) {
+		if (!(await claimLinkRate(ctx, `link-rate:ip:${await hashToken(ctx.requestMeta.ip)}`))) return { ok: false, error: RATE_ERROR };
+	}
 	const result = await sendMagicLink(ctx, { email, intent, redirect });
 
 	return {
@@ -182,7 +203,9 @@ export async function verifyHandler(ctx: any) {
 		return { ok: false, code: "INVALID_TOKEN", error: "Invalid sign-in link." };
 	}
 
-	const authToken = unwrapStoredRecord<AuthTokenRecord>(await ctx.storage.authTokens.get(token));
+	const key = await hashToken(token);
+	const versioned = await ctx.storage.authTokens.getVersioned(key);
+	const authToken = unwrapStoredRecord<AuthTokenRecord>(versioned?.value);
 	if (!authToken) {
 		return { ok: false, code: "INVALID_TOKEN", error: "Sign-in link not found or already expired." };
 	}
@@ -190,11 +213,13 @@ export async function verifyHandler(ctx: any) {
 		return { ok: false, code: "USED_TOKEN", error: "This sign-in link has already been used." };
 	}
 	if (new Date(authToken.expiresAt).getTime() <= Date.now()) {
-		await ctx.storage.authTokens.delete(token);
+		await ctx.storage.authTokens.delete(key);
 		return { ok: false, code: "EXPIRED_TOKEN", error: "This sign-in link has expired." };
 	}
 
-	await ctx.storage.authTokens.put(token, { ...authToken, used: true });
+	if (!(await ctx.storage.authTokens.compareAndSet(key, versioned.revision, { ...authToken, used: true })).applied) {
+		return { ok: false, code: "USED_TOKEN", error: "This sign-in link has already been used." };
+	}
 	const session = await createSession(ctx, authToken.email);
 
 	return {
@@ -212,7 +237,7 @@ export async function sessionHandler(ctx: any) {
 export async function logoutHandler(ctx: any) {
 	const sessionToken = getCookieValue(ctx.request, SESSION_COOKIE_NAME);
 	if (sessionToken) {
-		await ctx.storage.sessions.delete(sessionToken);
+		await ctx.storage.sessions.delete(await hashToken(sessionToken));
 	}
 	return { ok: true };
 }

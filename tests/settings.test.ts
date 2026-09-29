@@ -94,4 +94,15 @@ describe("loadSettings", () => {
 		});
 		expect(ctx.kvStore.has("humans_mode")).toBe(false);
 	});
+
+	it("validates every section before the first write", async () => {
+		const base = createCtx();
+		const request = new Request("https://site.test/admin/settings", { method: "POST" });
+		const agents = { mode: "off", rail: "origin-x402", network: "", payTo: "", edgeTrust: "none" };
+		const ctx = { ...base, request, input: { agents, humans: { mode: "invalid", plans: [] } } };
+		await expect(settingsHandler(ctx)).resolves.toMatchObject({ ok: false, error: "Invalid humans.mode." });
+		expect(ctx.kvStore.size).toBe(0);
+		await expect(settingsHandler({ ...base, request, input: { agents, stripeEnvironment: "invalid" } })).resolves.toMatchObject({ ok: false, error: "Invalid stripeEnvironment." });
+		expect(ctx.kvStore.size).toBe(0);
+	});
 });

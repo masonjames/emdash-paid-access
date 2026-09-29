@@ -70,65 +70,63 @@ export async function restrictionsHandler(ctx: any) {
 	if (method === "POST") {
 		const body: Record<string, unknown> = ctx.input && typeof ctx.input === "object" ? ctx.input : {};
 		const settings = await loadSettings(ctx);
+		const taxonomy = body.type === "taxonomy";
+		const taxonomyName = typeof body.taxonomyName === "string" ? body.taxonomyName : "";
+		const termId = typeof body.termId === "string" ? body.termId : "";
+		const contentId = typeof body.contentId === "string" ? body.contentId : "";
+		const collectionSlug = typeof body.collectionSlug === "string" ? body.collectionSlug : "";
+		if (taxonomy ? !taxonomyName || !termId : !contentId || !collectionSlug) {
+			return { ok: false, error: taxonomy ? "taxonomyName and termId are required." : "contentId and collectionSlug are required." };
+		}
+		const key = taxonomy ? `${taxonomyName}:${termId}` : `${collectionSlug}:${contentId}`;
+		const existing = taxonomy
+			? normalizeTaxonomyRestriction(await ctx.storage.taxonomyRestrictions.get(key))
+			: normalizeContentRestriction(await ctx.storage.restrictions.get(key));
+		const merged: Record<string, unknown> = { ...existing, ...body };
 		const validPlanSlugs = settings.humans.plans.map((plan) => plan.slug);
-		const requestedPlanSlugs = parsePlanSlugs(body.requiredPlanSlugs);
+		const requestedPlanSlugs = parsePlanSlugs(merged.requiredPlanSlugs);
 		const requiredPlanSlugs = parsePlanSlugs(requestedPlanSlugs, validPlanSlugs);
 		if (requestedPlanSlugs.length !== requiredPlanSlugs.length) {
 			return { ok: false, error: "requiredPlanSlugs contains an unknown plan." };
 		}
-		if (body.policy != null && (typeof body.policy !== "string" || !POLICIES.includes(body.policy as AccessPolicy))) {
+		if (merged.policy != null && (typeof merged.policy !== "string" || !POLICIES.includes(merged.policy as AccessPolicy))) {
 			return { ok: false, error: "Invalid policy." };
 		}
-		const policy = typeof body.policy === "string"
-			? body.policy as AccessPolicy
+		const policy = typeof merged.policy === "string"
+			? merged.policy as AccessPolicy
 			: requiredPlanSlugs.length > 0 ? "members" : "public";
-		const agentPrice = normalizeAgentPrice(body.agentPrice);
-		if (body.agentPrice != null && body.agentPrice !== "" && !agentPrice) {
+		const agentPrice = normalizeAgentPrice(merged.agentPrice);
+		if (merged.agentPrice != null && merged.agentPrice !== "" && !agentPrice) {
 			return { ok: false, error: "agentPrice must be a dollar amount with at most six decimals." };
 		}
-		if ((policy === "agents-pay" || policy === "members") && !agentPrice) {
+		if (settings.agents.mode !== "off" && (policy === "agents-pay" || policy === "members") && !agentPrice) {
 			return { ok: false, error: "A valid agentPrice is required for a policy sold to agents." };
 		}
-		if (body.type === "taxonomy") {
-			const taxonomyName = typeof body.taxonomyName === "string" ? body.taxonomyName : "";
-			const termId = typeof body.termId === "string" ? body.termId : "";
-			if (!taxonomyName || !termId) {
-				return { ok: false, error: "taxonomyName and termId are required." };
-			}
-			const key = `${taxonomyName}:${termId}`;
-			const existing = normalizeTaxonomyRestriction(await ctx.storage.taxonomyRestrictions.get(key));
+		if (taxonomy) {
 			await ctx.storage.taxonomyRestrictions.put(key, {
 				taxonomyName,
 				termId,
 				requiredPlanSlugs,
-				productIds: normalizeStringArray(body.productIds),
+				productIds: normalizeStringArray(merged.productIds),
 				policy,
 				agentPrice,
-				passEligible: body.passEligible === true,
+				passEligible: merged.passEligible === true,
 				createdAt: existing?.createdAt ?? nowIso(),
 				updatedAt: nowIso(),
 			});
 			return { ok: true };
 		}
 
-		const contentId = typeof body.contentId === "string" ? body.contentId : "";
-		const collectionSlug = typeof body.collectionSlug === "string" ? body.collectionSlug : "";
-		if (!contentId || !collectionSlug) {
-			return { ok: false, error: "contentId and collectionSlug are required." };
-		}
-
-		const key = `${collectionSlug}:${contentId}`;
-		const existing = normalizeContentRestriction(await ctx.storage.restrictions.get(key));
 		const record: ContentRestrictionRecord = {
 			contentId,
 			collectionSlug,
-			slug: typeof body.slug === "string" ? body.slug : null,
-			title: typeof body.title === "string" ? body.title : null,
+			slug: typeof merged.slug === "string" ? merged.slug : null,
+			title: typeof merged.title === "string" ? merged.title : null,
 			requiredPlanSlugs,
-			productIds: normalizeStringArray(body.productIds),
+			productIds: normalizeStringArray(merged.productIds),
 			policy,
 			agentPrice,
-			passEligible: body.passEligible === true,
+			passEligible: merged.passEligible === true,
 			source: "manual",
 			createdAt: existing?.createdAt ?? nowIso(),
 			updatedAt: nowIso(),

@@ -43,6 +43,34 @@ function rule(policy: ContentRestrictionRecord["policy"], agentPrice: string | n
 }
 
 describe("agent Markdown response", () => {
+	it("builds Markdown before enforce and serves it after a receipt write fails", async () => {
+		const events: string[] = [];
+		const content = [...entry.content];
+		Object.defineProperty(content, "0", { get() { events.push("markdown"); return entry.content[0]; } });
+		const enforce = vi.fn(async () => {
+			events.push("enforce");
+			return { paid: true, settlement: { success: true, transaction: "tx", network: "eip155:8453" }, responseHeaders: { "PAYMENT-RESPONSE": "receipt" } };
+		});
+		const log = { error: vi.fn(), warn: vi.fn() };
+		const put = vi.fn().mockRejectedValue(new Error("storage down"));
+		const response = await serveAgentEntry({ request: new Request("https://example.test/paid.md"), entry: { ...entry, content }, rules: [rule("agents-pay")], settings,
+			enforcer: { enforce } as unknown as X402Enforcer, receipts: { put }, log });
+		expect(events.indexOf("markdown")).toBeLessThan(events.indexOf("enforce"));
+		expect(response.status).toBe(200);
+		expect(response.headers.get("payment-response")).toBe("receipt");
+		expect(await response.text()).toContain("Secret body");
+		expect(log.error).toHaveBeenCalledOnce();
+		expect(log.warn).toHaveBeenCalledTimes(2);
+		expect(put).toHaveBeenCalledWith("receipt:tx", expect.objectContaining({ payer: "unknown", network: "eip155:8453" }));
+	});
+
+	it("returns an empty 503 for a failed settlement even when paid is true", async () => {
+		const response = await serveAgentEntry({ request: new Request("https://example.test/paid.md"), entry, rules: [rule("agents-pay")], settings,
+			enforcer: { enforce: async () => ({ paid: true, settlement: { success: false, transaction: "tx" } }) } as unknown as X402Enforcer,
+			receipts: { put: vi.fn() } });
+		expect(response.status).toBe(503);
+		expect(await response.text()).toBe("");
+	});
 	it("serves public Portable Text as Markdown with required metadata", async () => {
 		const response = await serveAgentEntry({
 			request: new Request("https://example.test/agents/posts/paid-post.md"),

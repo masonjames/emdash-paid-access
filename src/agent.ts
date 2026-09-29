@@ -45,8 +45,8 @@ function markdown(entry: AgentEntry, pricePaid: string): string {
 	].join("\n");
 }
 
-function markdownResponse(entry: AgentEntry, pricePaid: string, extraHeaders: Record<string, string> = {}): Response {
-	return new Response(markdown(entry, pricePaid), {
+function markdownResponse(body: string, extraHeaders: Record<string, string> = {}): Response {
+	return new Response(body, {
 		status: 200,
 		headers: {
 			...extraHeaders,
@@ -64,37 +64,47 @@ export async function serveAgentEntry(input: {
 	settings: AgentSettings;
 	enforcer?: X402Enforcer;
 	receipts: ReceiptStore;
+	log?: { error(message: string, data?: unknown): void; warn(message: string, data?: unknown): void };
 }): Promise<Response> {
 	if (new URL(input.request.url).pathname.endsWith(".json")) return empty(404);
 	const policies = input.rules.map((rule) => rule.policy);
 	const initial = resolveAccess({ policies, audience: "agent", agentsMode: input.settings.mode });
-	if (initial.status === 200) return markdownResponse(input.entry, "$0");
+	if (initial.status === 200) return markdownResponse(markdown(input.entry, "$0"));
 	if (initial.status !== 402) return empty(initial.status);
 
 	const price = highestAgentPrice(input.rules);
 	if (!price || !input.settings.payTo || !input.settings.network) return empty(503);
 	if (input.settings.rail === "gateway") return empty(401);
 	if (!input.enforcer) return empty(503);
-
+	let body: string;
 	try {
-		const enforced = await input.enforcer.enforce(input.request, {
+		body = markdown(input.entry, price);
+	} catch (error) {
+		input.log?.error("Failed to build agent Markdown", error);
+		return empty(503);
+	}
+
+	let enforced: Awaited<ReturnType<X402Enforcer["enforce"]>>;
+	try {
+		enforced = await input.enforcer.enforce(input.request, {
 			price,
 			payTo: input.settings.payTo,
 			network: input.settings.network,
 			description: input.entry.title,
 			mimeType: "text/markdown",
 		});
-		if (enforced instanceof Response) return enforced;
-		const result = enforced as EnforceResult;
-		const settlement = result.settlement;
-		const payer = result.payer || settlement?.payer;
-		if (
-			!result.paid
-			|| !settlement?.success
-			|| !settlement.transaction
-			|| settlement.network !== input.settings.network
-			|| !payer
-		) return empty(503);
+	} catch (error) {
+		input.log?.error("Agent payment enforcement failed", error);
+		return empty(503);
+	}
+	if (enforced instanceof Response) return enforced;
+	const result = enforced as EnforceResult;
+	const settlement = result.settlement;
+	if (!settlement?.success || !settlement.transaction) return empty(503);
+	if (settlement.network !== input.settings.network) input.log?.warn("Settlement network differs from configured network", settlement);
+	const payer = result.payer ?? settlement.payer ?? "unknown";
+	if (payer === "unknown") input.log?.warn("Settled agent payment has no payer", settlement);
+	try {
 		const receipt: ReceiptRecord = {
 			entryId: input.entry.id,
 			collectionSlug: input.entry.collectionSlug,
@@ -102,13 +112,13 @@ export async function serveAgentEntry(input: {
 			rail: "origin-x402",
 			payer,
 			amount: price,
-			network: input.settings.network,
+			network: settlement.network,
 			transaction: settlement.transaction,
 			createdAt: new Date().toISOString(),
 		};
 		await input.receipts.put(`receipt:${settlement.transaction}`, receipt);
-		return markdownResponse(input.entry, price, result.responseHeaders);
-	} catch {
-		return empty(503);
+	} catch (error) {
+		input.log?.error("Failed to record settled agent payment", error);
 	}
+	return markdownResponse(body, result.responseHeaders);
 }

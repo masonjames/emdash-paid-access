@@ -37,15 +37,39 @@ export async function entitlementHandler(ctx: any) {
 }
 
 export async function offersHandler(ctx: any) {
-	const [content, taxonomy] = await Promise.all([
-		ctx.storage.restrictions.query({ limit: 200 }),
-		ctx.storage.taxonomyRestrictions.query({ limit: 200 }),
-	]);
-	const items = [
-		...content.items.map((item: { id: string; data: unknown }) => ({ id: item.id, type: "content", data: normalizeContentRestriction(item.data) })),
-		...taxonomy.items.map((item: { id: string; data: unknown }) => ({ id: item.id, type: "taxonomy", data: normalizeTaxonomyRestriction(item.data) })),
-	].filter((item) => item.data && ["agents-pay", "members"].includes(item.data.policy) && item.data.agentPrice);
-	return { items };
+	const url = new URL(ctx.request.url);
+	const requestedLimit = Number(url.searchParams.get("limit") ?? 50);
+	const limit = Number.isInteger(requestedLimit) ? Math.max(1, Math.min(100, requestedLimit)) : 50;
+	const cursor = url.searchParams.get("cursor") ?? "";
+	const taxonomyPage = cursor.startsWith("taxonomy:");
+	const settings = await loadSettings(ctx);
+	const items: Array<Record<string, string>> = [];
+	if (!taxonomyPage) {
+		const content = await ctx.storage.restrictions.query({ limit, ...(cursor.startsWith("content:") ? { cursor: cursor.slice(8) } : {}) });
+		for (const item of content.items as Array<{ data: unknown }>) {
+			const rule = normalizeContentRestriction(item.data);
+			if (!rule || !rule.agentPrice || !["agents-pay", "members"].includes(rule.policy) || !ctx.content) continue;
+			try {
+				const entry = await ctx.content.get(rule.collectionSlug, rule.contentId);
+				if (!entry || entry.status !== "published" || !entry.slug) continue;
+				items.push({ type: "content", collection: rule.collectionSlug, slug: entry.slug,
+					title: typeof entry.data.title === "string" ? entry.data.title : rule.title ?? "",
+					price: rule.agentPrice, policy: rule.policy, network: settings.agents.network });
+			} catch { /* Unavailable content is not a public offer. */ }
+		}
+		if (content.nextCursor) return { items, nextCursor: `content:${content.nextCursor}` };
+		if (content.items.length >= limit) return { items, nextCursor: "taxonomy:" };
+	}
+	const taxonomy = await ctx.storage.taxonomyRestrictions.query({ limit: limit - items.length || limit,
+		...(taxonomyPage && cursor.slice(9) ? { cursor: cursor.slice(9) } : {}) });
+	for (const item of taxonomy.items as Array<{ data: unknown }>) {
+		const rule = normalizeTaxonomyRestriction(item.data);
+		if (rule?.agentPrice && ["agents-pay", "members"].includes(rule.policy)) {
+			items.push({ type: "taxonomy", taxonomy: rule.taxonomyName, termId: rule.termId,
+				price: rule.agentPrice, policy: rule.policy, network: settings.agents.network });
+		}
+	}
+	return { items, nextCursor: taxonomy.nextCursor ? `taxonomy:${taxonomy.nextCursor}` : null };
 }
 
 export async function receiptsHandler(ctx: any) {

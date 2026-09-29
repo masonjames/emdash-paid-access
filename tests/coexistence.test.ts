@@ -71,3 +71,11 @@ it("probes on first use and caches the result", async () => {
 	await expect(probeLegacyPlugin(handler, request)).resolves.toBe(true);
 	expect(handler).toHaveBeenCalledTimes(1);
 });
+
+it("retries after a failed probe", async () => {
+	const handler = vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValue({ success: true, status: 200 });
+	const request = new Request("https://site.test/");
+	await expect(probeLegacyPlugin(handler, request)).rejects.toThrow("offline");
+	await expect(probeLegacyPlugin(handler, request)).resolves.toBe(true);
+	expect(handler).toHaveBeenCalledTimes(2);
+});

@@ -7,6 +7,42 @@ import { restrictionsHandler } from "../src/handlers/restrictions.js";
 import { MASONJAMES_PLANS } from "./fixtures/masonjames-plans.js";
 
 describe("settings-defined restriction plans", () => {
+	it("preserves omitted fields on content and taxonomy updates", async () => {
+		const saved = new Map<string, Record<string, unknown>>();
+		const collection = {
+			get: async (key: string) => saved.get(key) ?? null,
+			put: async (key: string, value: Record<string, unknown>) => { saved.set(key, value); },
+		};
+		const ctx = {
+			input: { collectionSlug: "posts", contentId: "one", policy: "members-only", requiredPlanSlugs: ["default-product"], productIds: ["prod_1"], title: "Original", slug: "original", passEligible: true },
+			request: new Request("https://site.test/restrictions", { method: "POST" }),
+			kv: { get: async (key: string) => key === "humans_plans" ? MASONJAMES_PLANS : null },
+			storage: { restrictions: collection, taxonomyRestrictions: collection },
+		};
+		await restrictionsHandler(ctx);
+		await restrictionsHandler({ ...ctx, input: { collectionSlug: "posts", contentId: "one" } });
+		expect(saved.get("posts:one")).toMatchObject({ policy: "members-only", requiredPlanSlugs: ["default-product"], productIds: ["prod_1"], title: "Original", slug: "original", passEligible: true });
+		await restrictionsHandler({ ...ctx, input: { type: "taxonomy", taxonomyName: "tag", termId: "one", policy: "members-only", productIds: ["prod_2"], passEligible: true } });
+		await restrictionsHandler({ ...ctx, input: { type: "taxonomy", taxonomyName: "tag", termId: "one" } });
+		expect(saved.get("tag:one")).toMatchObject({ policy: "members-only", productIds: ["prod_2"], passEligible: true });
+	});
+
+	it("allows a member policy without a price when agents are off", async () => {
+		const put = vi.fn();
+		await expect(restrictionsHandler({ input: { collectionSlug: "posts", contentId: "one", policy: "members" },
+			request: new Request("https://site.test/restrictions", { method: "POST" }), kv: { get: async () => null },
+			storage: { restrictions: { get: async () => null, put }, taxonomyRestrictions: { get: async () => null } } })).resolves.toMatchObject({ ok: true });
+		expect(put).toHaveBeenCalledOnce();
+	});
+
+	it("requires a price for an agent-sale rule when agents are paid", async () => {
+		const put = vi.fn();
+		await expect(restrictionsHandler({ input: { collectionSlug: "posts", contentId: "one", policy: "members" },
+			request: new Request("https://site.test/restrictions", { method: "POST" }),
+			kv: { get: async (key: string) => key === "agents_mode" ? "paid" : null },
+			storage: { restrictions: { get: async () => null, put } } })).resolves.toMatchObject({ ok: false, error: "A valid agentPrice is required for a policy sold to agents." });
+		expect(put).not.toHaveBeenCalled();
+	});
 	it("rejects an unknown plan instead of saving an unrestricted rule", async () => {
 		const put = vi.fn();
 		const ctx = {
