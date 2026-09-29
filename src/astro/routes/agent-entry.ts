@@ -31,7 +31,8 @@ export const GET: APIRoute = async ({ params, locals, request, site }) => {
 			return empty(503);
 		}
 		const fallback = new URL(request.url); fallback.pathname = fallback.pathname.replace(/\.md$/, ""); fallback.search = "";
-		const canonicalUrl = result.data.canonicalUrl ?? await collectionUrl(params.collection, params.slug, site) ?? fallback.href;
+		// The collection's pattern carries the site's own URL shape (such as a trailing slash).
+		const canonicalUrl = await collectionUrl(params.collection, params.slug, site) ?? result.data.canonicalUrl ?? fallback.href;
 		return await serveAgentEntry({ request,
 			entry: { id, collectionSlug: params.collection, slug: params.slug, title: entry.data.title ?? "", content: entry.data.content ?? [], canonicalUrl },
 			rules: result.data.rules, settings: result.data.agents, enforcer: locals.x402,

@@ -15,8 +15,6 @@ describe("two questions", () => {
 	])("rejects %s + %s without changing saved rules", async (people, agents, message) => {
 		expect(() => policyFromAnswers(people, agents)).toThrow(message);
 		const ctx = fixture(paid); await ctx.storage.restrictions.put("posts:1", rule);
-		const result = await editor(ctx, submit("editor:save", { people, agents }));
-		expect(result.toast).toEqual({ type: "error", message }); expect(await ctx.storage.restrictions.get("posts:1")).toEqual(rule);
 		const taxonomy = await admin(ctx, submit("rules:taxonomy:save:category", { term: "premium", people, agents }));
 		expect(taxonomy.toast).toEqual({ type: "error", message }); expect(ctx.storage.taxonomy_restrictions.data.size).toBe(0);
 	});
@@ -55,25 +53,45 @@ describe("rules page", () => {
 });
 
 describe("editor panel", () => {
-	it("loads with modules off, saves from the host identity, and removes the saved rule", async () => {
+	const radioOptions = (blocks: unknown[], id: string) => JSON.stringify(blocks).match(new RegExp(`"action_id":"${id}"[^\\]]*`))?.[0] ?? "";
+	it("auto-saves from the host identity with modules off, and removes the rule", async () => {
 		const ctx = fixture();
 		const initial = await editor(ctx, { type: "panel_load" }); expect(initial.blocks[0]).toMatchObject({ fields: [{ label: "People", value: "Anyone" }, { label: "AI agents", value: "Off" }] });
-		expect(JSON.stringify(initial)).toContain("AI agent sales are off for this site.");
-		const saved = await editor(ctx, submit("editor:save", { people: "anyone", agents: "pay", price: "$0.05", contentId: "forged", title: "forged" }));
+		expect(JSON.stringify(initial)).toContain("AI agent sales are off for this site."); expect(JSON.stringify(initial)).toContain("Changes save as you make them.");
+		// With agents off, a price isn't required, so "pay" saves straight away.
+		const saved = await editor(ctx, action("editor:agents", "pay"));
 		expect(saved.toast).toEqual({ type: "success", message: "Saved. Readers see the change on their next visit." });
 		expect(await ctx.storage.restrictions.get("posts:1")).toMatchObject({ policy: "agents-pay", slug: "hello", title: "Hello" });
 		expect(JSON.stringify(saved)).toContain(AGENTS_PAY_WARNING); expect(ctx.storage.restrictions.data.has("posts:forged")).toBe(false);
 		await editor(ctx, action("editor:remove")); expect(ctx.storage.restrictions.data.size).toBe(0);
 	});
-	it("uses conditional price and plans fields with names and published agent URLs", async () => {
-		const ctx = fixture({ ...paid, humansPlans: [{ slug: "premium", name: "Premium", stripeProductId: "prod_one", grantsVisibility: [] }] });
-		const result = await editor(ctx, submit("editor:save", { people: "members", agents: "pay", price: "$0.05", plans: ["premium"] }));
-		const fields = result.blocks.find(b => b.type === "form"); expect(fields).toMatchObject({ fields: expect.arrayContaining([
-			expect.objectContaining({ action_id: "price", placeholder: "$0.05", condition: { field: "agents", eq: "pay" } }),
-			expect.objectContaining({ action_id: "plans", condition: { field: "people", eq: "members" }, options: [{ value: "premium", label: "Premium" }] }),
-		]) });
-		expect(JSON.stringify(result)).toContain("/agents/posts/hello.md"); expect(JSON.stringify(result)).toContain("Member access is off");
-		const invalid = await editor(ctx, submit("editor:save", { people: "members", agents: "pay", price: "bad", plans: ["premium"] })); expect(invalid.toast?.type).toBe("error"); expect(await ctx.storage.restrictions.get("posts:1")).toMatchObject({ agentPrice: "$0.05" });
+	it("offers only valid agent choices and ignores ones it didn't offer", async () => {
+		const ctx = fixture(paid);
+		const anyone = await editor(ctx, { type: "panel_load" });
+		expect(radioOptions(anyone.blocks, "editor:agents")).toContain('"value":"free"'); expect(radioOptions(anyone.blocks, "editor:agents")).not.toContain('"value":"subscribers"');
+		expect((await editor(ctx, action("editor:agents", "subscribers"))).toast?.type).toBe("error"); expect(ctx.storage.restrictions.data.size).toBe(0);
+		const members = await editor(ctx, action("editor:people", "members"));
+		expect(await ctx.storage.restrictions.get("posts:1")).toMatchObject({ policy: "members-only" });
+		expect(radioOptions(members.blocks, "editor:agents")).toContain('"value":"subscribers"'); expect(radioOptions(members.blocks, "editor:agents")).not.toContain('"value":"free"');
+	});
+	it("asks for a price before selling, saves it on blur, and keeps the saved price on a bad one", async () => {
+		const ctx = fixture(paid);
+		await editor(ctx, action("editor:people", "members"));
+		const choosePay = await editor(ctx, action("editor:agents", "pay"));
+		expect(choosePay.toast?.type).toBe("info"); expect(JSON.stringify(choosePay)).toContain('"action_id":"editor:price:members"');
+		expect(await ctx.storage.restrictions.get("posts:1")).toMatchObject({ policy: "members-only" });
+		const priced = await editor(ctx, action("editor:price:members", "$0.05"));
+		expect(priced.toast?.type).toBe("success"); expect(await ctx.storage.restrictions.get("posts:1")).toMatchObject({ policy: "members", agentPrice: "$0.05" });
+		expect(JSON.stringify(priced)).toContain("/agents/posts/hello.md"); expect(JSON.stringify(priced)).toContain("Member access is off");
+		const invalid = await editor(ctx, action("editor:price:members", "bad"));
+		expect(invalid.toast?.type).toBe("error"); expect(await ctx.storage.restrictions.get("posts:1")).toMatchObject({ agentPrice: "$0.05" });
+	});
+	it("lets members' plans be chosen when Stripe memberships are on", async () => {
+		const ctx = fixture({ ...paid, humansMode: "stripe", humansPlans: [{ slug: "premium", name: "Premium", stripeProductId: "prod_one", grantsVisibility: [] }] });
+		const members = await editor(ctx, action("editor:people", "members"));
+		expect(JSON.stringify(members)).toContain('"action_id":"editor:plans"'); expect(JSON.stringify(members)).toContain('"label":"Premium"');
+		await editor(ctx, action("editor:plans", ["premium"]));
+		expect(await ctx.storage.restrictions.get("posts:1")).toMatchObject({ policy: "members-only", requiredPlanSlugs: ["premium"] });
 	});
 	it("shows inherited and legacy rules and clears legacy keys only on removal", async () => {
 		const ctx = fixture(paid); await ctx.storage.restrictions.put("posts:hello", { ...rule, policy: "members" });
@@ -87,7 +105,7 @@ it("explains an empty taxonomy and protects errors from exposing internal detail
 	const ctx = fixture(); ctx.taxonomies.getTerms = async () => [];
 	expect(JSON.stringify(await admin(ctx, submit("rules:taxonomy:choose", { taxonomy: "category" })))).toContain("Add a term under Categories");
 	ctx.storage.restrictions.put = async () => { throw new Error("private internal detail"); };
-	const failed = await editor(ctx, submit("editor:save", { people: "anyone", agents: "free" }));
+	const failed = await editor(ctx, action("editor:agents", "pay"));
 	expect(failed.toast?.type).toBe("error"); expect(JSON.stringify(failed)).not.toContain("private internal detail");
 	await ctx.kv.set("state:legacyPluginPresent", true);
 	expect(JSON.stringify(await editor(ctx, { type: "panel_load" }))).toContain("Review its rule in the Restrict panel");

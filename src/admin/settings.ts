@@ -53,9 +53,9 @@ export async function settingsPage(route: RouteContext, ctx: PluginContext, edit
 				...(s.agents.mode === "tokens-only" ? [{ type: "fields" as const, fields: [{ label: "Sell to AI agents", value: "Subscriber tokens only" }] }, context("Subscriber tokens only is the saved mode. Leave the choice below unchanged to keep it.")] : []),
 				form("settings:agents:save", "Save agent settings", [
 					{ type: "radio", action_id: "agents_mode", label: "Sell to AI agents", ...(s.agents.mode !== "tokens-only" ? { initial_value: s.agents.mode } : {}), options: [{ value: "off", label: "Off" }, { value: "paid", label: "On — agents pay per read" }] },
-					{ type: "select", action_id: "agents_network", label: "Network", condition: paid, initial_value: s.agents.network || "eip155:84532", options: [{ value: "eip155:84532", label: "Base Sepolia (test USDC)" }, { value: "eip155:8453", label: "Base (real USDC)" }] },
+					{ type: "radio", action_id: "agents_network", label: "Network", condition: paid, initial_value: s.agents.network || "eip155:84532", options: [{ value: "eip155:84532", label: "Base Sepolia (test USDC)" }, { value: "eip155:8453", label: "Base (real USDC)" }] },
 					{ ...textField("agents_pay_to", "Payout wallet", s.agents.payTo, "0x…"), condition: paid },
-				]), context("USDC goes straight to this address on Base. Use a wallet you control."),
+				]), ...(s.agents.mode === "paid" ? [context("USDC goes straight to this address on Base. Use a wallet you control.")] : []),
 				context(`Agents get each post as Markdown at ${s.agentRoutePrefix}/{collection}/{slug}.md and pay with the x402 protocol. People reading your site see no change.`),
 			] },
 			{ label: "Members", blocks: members },
