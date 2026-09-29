@@ -11,6 +11,11 @@ import { isRecord, parsePlanSlugs, normalizeStringArray, nowIso } from "../utils
 import { loadSettings } from "./settings.js";
 
 const POLICIES: AccessPolicy[] = ["public", "agents-pay", "members", "members-only"];
+const SALE: AccessPolicy[] = ["agents-pay", "members"];
+// With expectedRevision ("" when the rule must not exist yet), a write applies
+// only if the rule hasn't changed since the caller read it.
+const STALE = { ok: false, stale: true, error: "This post's access changed since the panel loaded. Check the choices and try again." };
+const expected = (body: Record<string, unknown>) => typeof body.expectedRevision === "string" ? body.expectedRevision : undefined;
 
 export async function restrictionsHandler(routeCtx: RouteContext, ctx: PluginContext) {
 	const method = routeCtx.request.method;
@@ -105,6 +110,8 @@ export async function restrictionsHandler(routeCtx: RouteContext, ctx: PluginCon
 		if (settings.agents.mode !== "off" && (policy === "agents-pay" || policy === "members") && !agentPrice) {
 			return { ok: false, error: "A valid agentPrice is required for a policy sold to agents." };
 		}
+		// A price only means something on a policy sold to agents.
+		const salePrice = SALE.includes(policy) ? agentPrice : null;
 		if (taxonomy) {
 			await ctx.storage.taxonomy_restrictions.put(key, {
 				taxonomyName,
@@ -112,7 +119,7 @@ export async function restrictionsHandler(routeCtx: RouteContext, ctx: PluginCon
 				requiredPlanSlugs,
 				productIds: normalizeStringArray(merged.productIds),
 				policy,
-				agentPrice,
+				agentPrice: salePrice,
 				passEligible: merged.passEligible === true,
 				createdAt: existing?.createdAt ?? nowIso(),
 				updatedAt: nowIso(),
@@ -128,13 +135,15 @@ export async function restrictionsHandler(routeCtx: RouteContext, ctx: PluginCon
 			requiredPlanSlugs,
 			productIds: normalizeStringArray(merged.productIds),
 			policy,
-			agentPrice,
+			agentPrice: salePrice,
 			passEligible: merged.passEligible === true,
 			source: "manual",
 			createdAt: existing?.createdAt ?? nowIso(),
 			updatedAt: nowIso(),
 		};
-		await ctx.storage.restrictions.put(key, record);
+		const revision = expected(body);
+		if (revision === undefined) await ctx.storage.restrictions.put(key, record);
+		else if (!(await ctx.storage.restrictions.compareAndSet(key, revision || null, record)).applied) return STALE;
 		return { ok: true, item: { id: key, data: record } };
 	}
 
@@ -153,7 +162,10 @@ export async function restrictionsHandler(routeCtx: RouteContext, ctx: PluginCon
 			return { ok: false, error: "contentId and collectionSlug are required." };
 		}
 
-		await ctx.storage.restrictions.delete(`${collectionSlug}:${contentId}`);
+		const key = `${collectionSlug}:${contentId}`;
+		const revision = expected(body);
+		if (revision === undefined) await ctx.storage.restrictions.delete(key);
+		else if (!(revision ? (await ctx.storage.restrictions.compareAndDelete(key, revision)).applied : !(await ctx.storage.restrictions.get(key)))) return STALE;
 		if (slug && slug !== contentId) {
 			await ctx.storage.restrictions.delete(`${collectionSlug}:${slug}`);
 		}

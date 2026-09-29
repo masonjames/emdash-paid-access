@@ -38,12 +38,12 @@ describe("standard plugin companion seams", () => {
 		}
 		for (const name of ["agent/context", "receipts/record", "admin/settings", "admin", "editor/paid-access", "coexistence/report"]) expect(route(name).public).not.toBe(true);
 	});
-	it("returns private context including unioned rules and the highest price", async () => {
+	it("returns private context including unioned rules and the highest sale price", async () => {
 		const ctx = context({ agentsMode: "paid", agentsNetwork: "eip155:84532" }, "agents-pay", "members-only");
 		await expect(invoke(route("agent/context").handler, { ...ctx, input: { collection: "posts", contentId: "1", slug: "post" } })).resolves.toEqual({
 			canonicalUrl: null,
 			rules: [{ policy: "agents-pay", agentPrice: "$0.01" }, { policy: "agents-pay", agentPrice: "$0.01" }, { policy: "members-only", agentPrice: "$0.05" }],
-			agents: { mode: "paid", rail: "origin-x402", payTo: "", network: "eip155:84532", edgeTrust: "none", freeByDefault: false }, price: "$0.05",
+			agents: { mode: "paid", rail: "origin-x402", payTo: "", network: "eip155:84532", edgeTrust: "none", freeByDefault: false }, price: "$0.01",
 		});
 		await expect(invoke(route("agent/context").handler, { ...ctx, input: {} })).resolves.toMatchObject({ ok: false, error: { code: "BAD_REQUEST" } });
 		await expect(invoke(route("agent/context").handler, { ...ctx, input: { collection: "posts", contentId: "1" }, taxonomies: { getEntryTerms: async () => { throw Error("unavailable"); } } })).resolves.toMatchObject({ ok: false, error: { code: "UNAVAILABLE" } });

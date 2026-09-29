@@ -32,8 +32,8 @@ export function failure(message = "Couldn't load Paid Access. Reload this page a
 }
 export class AdminInputError extends Error {}
 export function policyFromAnswers(people: unknown, agents: unknown): AccessPolicy {
-	if (people === "anyone" && agents === "subscribers") throw new AdminInputError("A free post can't be limited to subscriber tokens. Choose Free or Pay per read for agents.");
-	if (people === "members" && agents === "free") throw new AdminInputError("Members-only posts can't be free for AI agents. Choose Pay per read or Only readers' agents.");
+	if (people === "anyone" && agents === "subscribers") throw new AdminInputError("For posts anyone can read, choose Free or Pay per read for AI agents. To offer agents nothing, remove the rule.");
+	if (people === "members" && agents === "free") throw new AdminInputError("Members-only posts can't be free for AI agents. Choose Pay per read or Not sold to agents.");
 	if (people === "anyone" && agents === "free") return "public";
 	if (people === "anyone" && agents === "pay") return "agents-pay";
 	if (people === "members" && agents === "pay") return "members";
@@ -45,24 +45,29 @@ export function answers(policy: AccessPolicy) {
 }
 export function summary(rule: { policy: AccessPolicy; agentPrice?: string | null }) {
 	const a = answers(rule.policy);
-	return { people: a.people === "members" ? "Members only" : "Anyone", agents: a.agents === "free" ? "Free" : a.agents === "subscribers" ? "Subscribers only" : `${rule.agentPrice || "Price not set"} per read` };
+	return { people: a.people === "members" ? "Members only" : "Anyone", agents: a.agents === "free" ? "Free" : a.agents === "subscribers" ? "Not sold" : `${rule.agentPrice || "Price not set"} per read` };
 }
+// In delegate mode another plugin decides who reads for free, so rules only price agents.
 export function ruleFields(settings: PaidAccessSettings, rule?: { policy: AccessPolicy; agentPrice?: string | null; requiredPlanSlugs?: string[] }): FormField[] {
 	const a = answers(rule?.policy ?? "public");
+	if (settings.humans.mode === "delegate") return [
+		{ type: "radio", action_id: "agents", label: "What do AI agents get?", initial_value: a.agents === "subscribers" ? "pay" : a.agents, options: [{ value: "free", label: "Free — they read it as Markdown" }, { value: "pay", label: "Pay per read (x402, USDC)" }] },
+		{ ...textField("price", "Price per read (USD)", rule?.agentPrice ?? "", "$0.05"), condition: { field: "agents", eq: "pay" } },
+	];
 	return [
 		{ type: "radio", action_id: "people", label: "Who can read it for free?", initial_value: a.people, options: [{ value: "anyone", label: "Anyone" }, { value: "members", label: "Members only" }] },
-		{ type: "radio", action_id: "agents", label: "What about AI agents?", initial_value: a.agents, options: [{ value: "free", label: "Free — they read it as Markdown" }, { value: "pay", label: "Pay per read (x402, USDC)" }, { value: "subscribers", label: "Only readers' agents with a subscriber token" }] },
+		{ type: "radio", action_id: "agents", label: "What about AI agents?", initial_value: a.agents, options: [{ value: "free", label: "Free — they read it as Markdown" }, { value: "pay", label: "Pay per read (x402, USDC)" }, { value: "subscribers", label: "Not sold to agents (members only)" }] },
 		{ ...textField("price", "Price per read (USD)", rule?.agentPrice ?? "", "$0.05"), condition: { field: "agents", eq: "pay" } },
 		...(settings.humans.plans.length ? [{ type: "checkbox" as const, action_id: "plans", label: "Plans that include it", options: settings.humans.plans.map(p => ({ value: p.slug, label: p.name })), initial_value: rule?.requiredPlanSlugs ?? [], condition: { field: "people", eq: "members" } }] : []),
 	];
 }
 export function ruleHelp(settings: PaidAccessSettings, policy?: AccessPolicy): Block[] {
 	return [context("Agents pay this in USDC before they get the full post. Up to six decimals."),
-		...(!settings.humans.plans.length ? [context("Add a plan under Paid Access → Settings → Members first.")] : []),
+		...(!settings.humans.plans.length && settings.humans.mode === "stripe" ? [context("Add a plan under Paid Access → Settings → Members first.")] : []),
 		...(policy === "agents-pay" ? [banner(AGENTS_PAY_WARNING, "alert")] : [])];
 }
-export function ruleInput(values: Record<string, unknown>) {
-	const policy = policyFromAnswers(values.people, values.agents);
+export function ruleInput(values: Record<string, unknown>, delegated = false) {
+	const policy = policyFromAnswers(delegated ? "anyone" : values.people, values.agents);
 	return { policy, agentPrice: values.agents === "pay" ? values.price : null, requiredPlanSlugs: values.people === "members" ? values.plans ?? [] : [], productIds: [] };
 }
 export async function allRows(collection: PluginContext["storage"][string]) {

@@ -13,7 +13,21 @@ export function store(seed: Record<string, unknown> = {}) {
 }
 function collection() {
 	const s = store();
-	return { ...s, put: s.set, query: async ({ limit = 200, cursor = "0", orderBy }: { limit?: number; cursor?: string; orderBy?: Record<string, string> } = {}) => {
+	// Revisions for compare-and-set, like EmDash's plugin storage.
+	const revisions = new Map<string, string>(); let next = 0;
+	const put = async (key: string, value: unknown) => { s.data.set(key, value); revisions.set(key, String(++next)); };
+	return { ...s, put, set: put,
+		delete: async (key: string) => { revisions.delete(key); return s.data.delete(key); },
+		getVersioned: async (key: string) => s.data.has(key) ? { value: s.data.get(key), revision: revisions.get(key)! } : null,
+		compareAndSet: async (key: string, expected: string | null, value: unknown) => {
+			if ((revisions.get(key) ?? null) !== expected) return { applied: false };
+			await put(key, value); return { applied: true, revision: revisions.get(key)! };
+		},
+		compareAndDelete: async (key: string, expected: string) => {
+			if (revisions.get(key) !== expected) return { applied: false };
+			revisions.delete(key); s.data.delete(key); return { applied: true };
+		},
+		query: async ({ limit = 200, cursor = "0", orderBy }: { limit?: number; cursor?: string; orderBy?: Record<string, string> } = {}) => {
 		let rows = [...s.data].map(([id, data]) => ({ id, data }));
 		if (orderBy) { const [key, direction] = Object.entries(orderBy)[0]; rows = rows.sort((a, b) => String((a.data as Record<string, unknown>)[key]).localeCompare(String((b.data as Record<string, unknown>)[key])) * (direction === "desc" ? -1 : 1)); }
 		const offset = Number(cursor); const items = rows.slice(offset, offset + limit); const more = offset + limit < rows.length;

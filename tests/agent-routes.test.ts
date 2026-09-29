@@ -56,19 +56,34 @@ describe("agent plugin routes", () => {
 		});
 	});
 
+	const paidRule = { contentId: "1", collectionSlug: "posts", policy: "agents-pay", agentPrice: "$0.01", requiredPlanSlugs: ["secret"], productIds: ["prod_secret"], passEligible: true, createdAt: "2026-09-23T00:00:00.000Z" };
 	it("lists only purchasable offers", async () => {
 		const ctx = {
 			request: new Request("https://site.test/offers?limit=1"),
 			settings: { get: kvGet },
-			content: { get: async () => ({ status: "published", slug: "paid", data: { title: "Paid post" } }) },
+			content: { get: async () => ({ id: "1", status: "published", slug: "paid", data: { title: "Paid post" } }) },
 			storage: {
-				restrictions: { query: async () => ({ items: [
-					{ id: "paid", data: { contentId: "1", collectionSlug: "posts", policy: "agents-pay", agentPrice: "$0.01", requiredPlanSlugs: ["secret"], productIds: ["prod_secret"], passEligible: true, createdAt: "2026-09-23T00:00:00.000Z" } },
-				], cursor: "page-2" }) },
+				restrictions: { query: async () => ({ items: [{ id: "posts:1", data: paidRule }], cursor: "page-2" }), get: async (key: string) => key === "posts:1" ? paidRule : null },
 				taxonomy_restrictions: { query: async () => ({ items: [] }) },
 			},
 		};
 		await expect(invoke(offersHandler, ctx)).resolves.toEqual({ items: [{ type: "content", collection: "posts", slug: "paid", title: "Paid post", price: "$0.01", policy: "agents-pay", network: "eip155:84532", url: "/agents/posts/paid.md" }], nextCursor: "content:page-2" });
+	});
+
+	it("lists what the agent route sells, once, at the price it charges", async () => {
+		const offers = (inherited: unknown) => invoke(offersHandler, {
+			request: new Request("https://site.test/offers"), settings: { get: kvGet },
+			content: { get: async () => ({ id: "1", status: "published", slug: "paid", data: { title: "Paid post" } }) },
+			taxonomies: { getEntryTerms: async () => [{ taxonomy: "tag", id: "t" }] },
+			storage: {
+				// A legacy slug-keyed copy of the same rule must not list the post twice.
+				restrictions: { query: async () => ({ items: [{ id: "posts:1", data: paidRule }, { id: "posts:paid", data: { ...paidRule, contentId: "paid" } }] }), get: async (key: string) => key === "posts:1" ? paidRule : null },
+				taxonomy_restrictions: { query: async () => ({ items: [] }), get: async () => inherited },
+			},
+		}) as Promise<{ items: Array<Record<string, string>> }>;
+		const tag = (policy: string, agentPrice: string | null) => ({ taxonomyName: "tag", termId: "t", policy, agentPrice, createdAt: "2026-09-29" });
+		expect((await offers(tag("members-only", null))).items).toEqual([]);
+		expect((await offers(tag("members", "$0.05"))).items).toEqual([expect.objectContaining({ price: "$0.05", policy: "members" })]);
 	});
 
 	it("skips drafts and pages taxonomy offers without private rule fields", async () => {

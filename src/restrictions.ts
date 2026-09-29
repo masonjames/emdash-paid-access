@@ -29,9 +29,10 @@ export function priceMicros(price: string): bigint {
 	return BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, "0"));
 }
 
-export function highestAgentPrice(records: Array<{ agentPrice?: string | null }>): string | null {
+// Only policies sold to agents carry a price that counts.
+export function highestAgentPrice(records: Array<{ policy: AccessPolicy; agentPrice?: string | null }>): string | null {
 	return records.reduce<string | null>((highest, record) => {
-		if (!record.agentPrice) return highest;
+		if (!record.agentPrice || (record.policy !== "agents-pay" && record.policy !== "members")) return highest;
 		return !highest || priceMicros(record.agentPrice) > priceMicros(highest) ? record.agentPrice : highest;
 	}, null);
 }

@@ -54,7 +54,7 @@ export async function rulesInteraction(route: RouteContext, ctx: PluginContext):
 	if (i.type === "block_action" && i.action === "rules:more") return rulesPage(ctx, str(i.value));
 	if (i.type === "block_action" && i.action === "rules:taxonomy:more") return rulesPage(ctx, undefined, undefined, [], str(i.value));
 	if (i.type === "form_submit" && i.action === "rules:taxonomy:choose") return rulesPage(ctx, undefined, str(i.values.taxonomy));
-	if (i.type === "block_action" && i.action === "rules:confirm-remove") return rulesPage(ctx, undefined, undefined, [{ type: "actions", elements: [confirmButton("rules:remove", "Remove", "Remove this rule?", "The post becomes free for everyone.", i.value)] }]);
+	if (i.type === "block_action" && i.action === "rules:confirm-remove") return rulesPage(ctx, undefined, undefined, [{ type: "actions", elements: [confirmButton("rules:remove", "Remove", "Remove this rule?", "Other rules, and other plugins, still apply.", i.value)] }]);
 	let result: unknown;
 	let taxonomy: string | undefined;
 	let extra: Block[] = [];
@@ -67,9 +67,10 @@ export async function rulesInteraction(route: RouteContext, ctx: PluginContext):
 			taxonomy = i.action.slice("rules:taxonomy:save:".length);
 			const terms = await ctx.taxonomies!.getTerms(taxonomy);
 			if (!terms.some(t => t.id === i.values.term)) throw new AdminInputError("Choose a term in this taxonomy, then save again.");
-			const input = ruleInput(i.values);
+			const settings = await loadSettings(ctx);
+			const input = ruleInput(i.values, settings.humans.mode === "delegate");
 			result = await restrictionsHandler(request(route, { ...input, type: "taxonomy", taxonomyName: taxonomy, termId: i.values.term }), ctx);
-			extra = ruleHelp(await loadSettings(ctx), input.policy).filter(b => b.type === "banner");
+			extra = ruleHelp(settings, input.policy).filter(b => b.type === "banner");
 		} else throw new AdminInputError("This action is unavailable. Reload Rules and try again.");
 	} catch (error) {
 		result = { ok: false, error: error instanceof AdminInputError ? error.message : "Choose a rule from the table and try again." };
