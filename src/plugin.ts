@@ -49,7 +49,9 @@ const plugin: SandboxedPlugin = {
 				const contributions: PageMetadataContribution[] = [];
 				if (settings.agents.mode !== "off" && slug && !rules.some(({ policy }) => policy === "members-only")) {
 					// EmDash 1.0.1 link contributions have no MIME type field.
-					contributions.push({ kind: "link", rel: "alternate", href: `${settings.agentRoutePrefix}/${encodeURIComponent(collection)}/${encodeURIComponent(slug)}.md` });
+					// EmDash only accepts absolute http(s) link hrefs, so resolve against the page URL.
+					const agentPath = `${settings.agentRoutePrefix}/${encodeURIComponent(collection)}/${encodeURIComponent(slug)}.md`;
+					contributions.push({ kind: "link", rel: "alternate", href: new URL(agentPath, page.url).href });
 				}
 				if (rules.some(({ policy }) => policy === "members" || policy === "members-only")) {
 					contributions.push({

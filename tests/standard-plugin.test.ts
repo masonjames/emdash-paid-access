@@ -79,7 +79,7 @@ describe("standard plugin companion seams", () => {
 describe("discovery metadata", () => {
 	it("advertises Markdown and marks member content as paywalled", async () => {
 		expect(await metadata(context({ agentsMode: "paid", agentRoutePrefix: "/read" }))).toEqual([
-			{ kind: "link", rel: "alternate", href: "/read/posts/post.md" },
+			{ kind: "link", rel: "alternate", href: "https://site.test/read/posts/post.md" },
 			{ kind: "jsonld", id: "paid-access:paywall", graph: { "@context": "https://schema.org", "@type": "WebPage", "@id": page.url, isAccessibleForFree: false, hasPart: { "@type": "WebPageElement", isAccessibleForFree: false, cssSelector: ".phb-locked" } } },
 		]);
 	});
@@ -90,7 +90,7 @@ describe("discovery metadata", () => {
 		}
 	});
 	it("supports tokens-only discovery without marking agent-only content as member locked", async () => {
-		expect(await metadata(context({ agentsMode: "tokens-only" }, "agents-pay"))).toEqual([{ kind: "link", rel: "alternate", href: "/agents/posts/post.md" }]);
+		expect(await metadata(context({ agentsMode: "tokens-only" }, "agents-pay"))).toEqual([{ kind: "link", rel: "alternate", href: "https://site.test/agents/posts/post.md" }]);
 	});
 	it("returns null for non-content, no rules, no contributions, and errors", async () => {
 		const ctx = context({}, "public");
