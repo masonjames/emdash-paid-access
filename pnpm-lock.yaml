@@ -7,7 +7,13 @@ settings:
 importers:
 
   .:
-    dependencies:
+    devDependencies:
+      '@emdash-cms/blocks':
+        specifier: 1.0.1
+        version: 1.0.1(@date-fns/tz@1.5.0)(@types/react@19.2.17)(date-fns@4.4.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(zod@3.25.76)
+      '@emdash-cms/plugin-cli':
+        specifier: 0.13.1
+        version: 0.13.1(@atcute/cbor@2.3.7(@atcute/cid@2.4.2))(@atcute/cid@2.4.2)(@atcute/identity@2.0.2(@atcute/lexicons@2.1.0)(typescript@5.9.3))(@emnapi/core@1.10.0)(@emnapi/runtime@1.11.0)
       '@emdash-cms/x402':
         specifier: 1.0.1
         version: 1.0.1(@solana/kit@5.5.1(typescript@5.9.3))(@solana/sysvars@5.5.1(typescript@5.9.3))(astro@6.1.3(@types/node@25.9.2)(rollup@4.61.1)(typescript@5.9.3))(typescript@5.9.3)
@@ -17,13 +23,6 @@ importers:
       '@x402/evm':
         specifier: 2.27.0
         version: 2.27.0(typescript@5.9.3)
-    devDependencies:
-      '@emdash-cms/blocks':
-        specifier: 1.0.1
-        version: 1.0.1(@date-fns/tz@1.5.0)(@types/react@19.2.17)(date-fns@4.4.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(zod@3.25.76)
-      '@emdash-cms/plugin-cli':
-        specifier: 0.13.1
-        version: 0.13.1(@atcute/cbor@2.3.7(@atcute/cid@2.4.2))(@atcute/cid@2.4.2)(@atcute/identity@2.0.2(@atcute/lexicons@2.1.0)(typescript@5.9.3))(@emnapi/core@1.10.0)(@emnapi/runtime@1.11.0)
       '@x402/fetch':
         specifier: 2.27.0
         version: 2.27.0
