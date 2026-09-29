@@ -59,7 +59,8 @@ export async function offersHandler(routeCtx: RouteContext, ctx: PluginContext) 
 				items.push({
 					type: "content", collection: rule.collectionSlug, slug: entry.slug,
 					title: typeof entry.data.title === "string" ? entry.data.title : rule.title ?? "",
-					price: rule.agentPrice, policy: rule.policy, network: settings.agents.network
+					price: rule.agentPrice, policy: rule.policy, network: settings.agents.network,
+					url: `${settings.agentRoutePrefix}/${encodeURIComponent(rule.collectionSlug)}/${encodeURIComponent(entry.slug)}.md`,
 				});
 			} catch { /* Unavailable content is not a public offer. */ }
 		}

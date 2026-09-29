@@ -68,7 +68,7 @@ describe("agent plugin routes", () => {
 				taxonomy_restrictions: { query: async () => ({ items: [] }) },
 			},
 		};
-		await expect(invoke(offersHandler, ctx)).resolves.toEqual({ items: [{ type: "content", collection: "posts", slug: "paid", title: "Paid post", price: "$0.01", policy: "agents-pay", network: "eip155:84532" }], nextCursor: "content:page-2" });
+		await expect(invoke(offersHandler, ctx)).resolves.toEqual({ items: [{ type: "content", collection: "posts", slug: "paid", title: "Paid post", price: "$0.01", policy: "agents-pay", network: "eip155:84532", url: "/agents/posts/paid.md" }], nextCursor: "content:page-2" });
 	});
 
 	it("skips drafts and pages taxonomy offers without private rule fields", async () => {

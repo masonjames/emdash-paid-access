@@ -45,6 +45,24 @@ function markdown(entry: AgentEntry, pricePaid: string): string {
 	].join("\n");
 }
 
+// An agent that can't have the post gets what a paywall gives people: why, where
+// to read it, and what it can buy instead.
+function notForSale(entry: AgentEntry, status: number, offersUrl?: string): Response {
+	const body = [
+		"---",
+		`title: ${JSON.stringify(entry.title)}`,
+		`canonical: ${JSON.stringify(entry.canonicalUrl)}`,
+		"---",
+		"",
+		status === 403 ? "This post is for subscribers. It isn't sold to AI agents." : "This post isn't offered to AI agents.",
+		"",
+		`- Read it on the site: ${entry.canonicalUrl}`,
+		...(offersUrl ? [`- Posts AI agents can buy, with prices: ${offersUrl}`] : []),
+		"",
+	].join("\n");
+	return new Response(body, { status, headers: { "Cache-Control": "private, no-store", "Content-Type": "text/markdown; charset=utf-8" } });
+}
+
 function markdownResponse(body: string, extraHeaders: Record<string, string> = {}): Response {
 	return new Response(body, {
 		status: 200,
@@ -65,11 +83,14 @@ export async function serveAgentEntry(input: {
 	enforcer?: X402Enforcer;
 	receipts: ReceiptStore;
 	log?: { error(message: string, data?: unknown): void; warn(message: string, data?: unknown): void };
+	/** Absolute URL of the offers list, linked when this entry isn't for sale. */
+	offersUrl?: string;
 }): Promise<Response> {
 	if (new URL(input.request.url).pathname.endsWith(".json")) return empty(404);
 	const policies = input.rules.map((rule) => rule.policy);
 	const initial = resolveAccess({ policies, audience: "agent", agentsMode: input.settings.mode, freeByDefault: input.settings.freeByDefault });
 	if (initial.status === 200) return markdownResponse(markdown(input.entry, "$0"));
+	if ((initial.status === 403 || initial.status === 404) && input.settings.mode !== "off") return notForSale(input.entry, initial.status, input.offersUrl);
 	if (initial.status !== 402) return empty(initial.status);
 
 	const price = highestAgentPrice(input.rules);
@@ -97,7 +118,10 @@ export async function serveAgentEntry(input: {
 		input.log?.error("Agent payment enforcement failed", error);
 		return empty(503);
 	}
-	if (enforced instanceof Response) return enforced;
+	if (enforced instanceof Response) {
+		enforced.headers.set("Cache-Control", "private, no-store");
+		return enforced;
+	}
 	const result = enforced as EnforceResult;
 	const settlement = result.settlement;
 	if (!settlement?.success || !settlement.transaction) return empty(503);

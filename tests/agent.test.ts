@@ -101,6 +101,35 @@ describe("agent Markdown response", () => {
 		expect(await response.text()).toBe("");
 	});
 
+	it("tells an agent why a post isn't for sale and what it can buy, without the body", async () => {
+		const serve = (rules: ContentRestrictionRecord[], mode: AgentSettings["mode"] = "paid") => serveAgentEntry({
+			request: new Request("https://example.test/agents/posts/paid-post.md"), entry, rules, settings: { ...settings, mode },
+			receipts: { put: vi.fn() }, offersUrl: "https://example.test/agents/offers",
+		});
+		for (const [rules, status, reason] of [[[], 404, "isn't offered to AI agents"], [[rule("members-only", null)], 403, "for subscribers"]] as const) {
+			const response = await serve([...rules]);
+			const note = await response.text();
+			expect(response.status).toBe(status);
+			expect(response.headers.get("cache-control")).toBe("private, no-store");
+			expect(response.headers.get("content-type")).toBe("text/markdown; charset=utf-8");
+			expect(note).toContain(reason);
+			expect(note).toContain("https://example.test/blog/paid-post/");
+			expect(note).toContain("https://example.test/agents/offers");
+			expect(note).not.toContain("Secret body");
+		}
+		// With agent sales off, the route stays an empty 404.
+		const off = await serve([rule("agents-pay")], "off");
+		expect(off.status).toBe(404);
+		expect(await off.text()).toBe("");
+	});
+
+	it("marks the 402 challenge private so no cache replays it", async () => {
+		const response = await serveAgentEntry({ request: new Request("https://example.test/paid.md"), entry, rules: [rule("agents-pay")], settings,
+			enforcer: { enforce: async () => new Response("{}", { status: 402 }) } as unknown as X402Enforcer, receipts: { put: vi.fn() } });
+		expect(response.status).toBe(402);
+		expect(response.headers.get("cache-control")).toBe("private, no-store");
+	});
+
 	it("lets @x402/fetch negotiate 402 then receive paid Markdown and stores a receipt", async () => {
 		const put = vi.fn();
 		const paymentRequired: PaymentRequired = {

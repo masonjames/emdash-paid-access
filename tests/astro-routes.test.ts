@@ -56,8 +56,10 @@ it("passes 402 unchanged, then paid Markdown with a recorded receipt and no-stor
 });
 it("proxies offers via GET, preserving pagination and mapping module-off to 404", async () => {
 	const { context, handler } = setup(); context.url = new URL("https://site.test/agents/offers?limit=2&cursor=next");
-	handler.mockResolvedValueOnce({ success: true, data: { items: [], nextCursor: "more" } } as never);
-	const response = await offers(context); expect(await response.json()).toEqual({ items: [], nextCursor: "more" });
+	const taxonomy = { type: "taxonomy", taxonomy: "tag", termId: "t1", price: "$0.05" };
+	handler.mockResolvedValueOnce({ success: true, data: { items: [{ type: "content", url: "/agents/posts/a.md" }, taxonomy], nextCursor: "more" } } as never);
+	const response = await offers(context);
+	expect(await response.json()).toEqual({ items: [{ type: "content", url: "https://site.test/agents/posts/a.md" }, taxonomy], nextCursor: "more" });
 	expect(response.headers.get("Cache-Control")).toBe("public, max-age=300");
 	expect(handler.mock.calls[0][1]).toBe("GET"); expect(new URL(handler.mock.calls[0][3].url).search).toBe("?limit=2&cursor=next");
 	handler.mockResolvedValueOnce({ success: true, data: { ok: false, error: { code: "MODULE_DISABLED" } } } as never);
