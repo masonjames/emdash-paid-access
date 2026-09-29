@@ -1,6 +1,8 @@
 // Copyright 2026 Mason James.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+import { invoke } from "./fixtures/route.js";
+
 import { describe, expect, it, vi } from "vitest";
 
 import { restrictionsHandler } from "../src/handlers/restrictions.js";
@@ -16,30 +18,30 @@ describe("settings-defined restriction plans", () => {
 		const ctx = {
 			input: { collectionSlug: "posts", contentId: "one", policy: "members-only", requiredPlanSlugs: ["default-product"], productIds: ["prod_1"], title: "Original", slug: "original", passEligible: true },
 			request: new Request("https://site.test/restrictions", { method: "POST" }),
-			kv: { get: async (key: string) => key === "humans_plans" ? MASONJAMES_PLANS : null },
-			storage: { restrictions: collection, taxonomyRestrictions: collection },
+			settings: { get: async (key: string) => key === "humansPlans" ? MASONJAMES_PLANS : null },
+			storage: { restrictions: collection, taxonomy_restrictions: collection },
 		};
-		await restrictionsHandler(ctx);
-		await restrictionsHandler({ ...ctx, input: { collectionSlug: "posts", contentId: "one" } });
+		await invoke(restrictionsHandler, ctx);
+		await invoke(restrictionsHandler, { ...ctx, input: { collectionSlug: "posts", contentId: "one" } });
 		expect(saved.get("posts:one")).toMatchObject({ policy: "members-only", requiredPlanSlugs: ["default-product"], productIds: ["prod_1"], title: "Original", slug: "original", passEligible: true });
-		await restrictionsHandler({ ...ctx, input: { type: "taxonomy", taxonomyName: "tag", termId: "one", policy: "members-only", productIds: ["prod_2"], passEligible: true } });
-		await restrictionsHandler({ ...ctx, input: { type: "taxonomy", taxonomyName: "tag", termId: "one" } });
+		await invoke(restrictionsHandler, { ...ctx, input: { type: "taxonomy", taxonomyName: "tag", termId: "one", policy: "members-only", productIds: ["prod_2"], passEligible: true } });
+		await invoke(restrictionsHandler, { ...ctx, input: { type: "taxonomy", taxonomyName: "tag", termId: "one" } });
 		expect(saved.get("tag:one")).toMatchObject({ policy: "members-only", productIds: ["prod_2"], passEligible: true });
 	});
 
 	it("allows a member policy without a price when agents are off", async () => {
 		const put = vi.fn();
-		await expect(restrictionsHandler({ input: { collectionSlug: "posts", contentId: "one", policy: "members" },
-			request: new Request("https://site.test/restrictions", { method: "POST" }), kv: { get: async () => null },
-			storage: { restrictions: { get: async () => null, put }, taxonomyRestrictions: { get: async () => null } } })).resolves.toMatchObject({ ok: true });
+		await expect(invoke(restrictionsHandler, { input: { collectionSlug: "posts", contentId: "one", policy: "members" },
+			request: new Request("https://site.test/restrictions", { method: "POST" }), settings: { get: async () => null },
+			storage: { restrictions: { get: async () => null, put }, taxonomy_restrictions: { get: async () => null } } })).resolves.toMatchObject({ ok: true });
 		expect(put).toHaveBeenCalledOnce();
 	});
 
 	it("requires a price for an agent-sale rule when agents are paid", async () => {
 		const put = vi.fn();
-		await expect(restrictionsHandler({ input: { collectionSlug: "posts", contentId: "one", policy: "members" },
+		await expect(invoke(restrictionsHandler, { input: { collectionSlug: "posts", contentId: "one", policy: "members" },
 			request: new Request("https://site.test/restrictions", { method: "POST" }),
-			kv: { get: async (key: string) => key === "agents_mode" ? "paid" : null },
+			settings: { get: async (key: string) => key === "agentsMode" ? "paid" : null },
 			storage: { restrictions: { get: async () => null, put } } })).resolves.toMatchObject({ ok: false, error: "A valid agentPrice is required for a policy sold to agents." });
 		expect(put).not.toHaveBeenCalled();
 	});
@@ -54,16 +56,16 @@ describe("settings-defined restriction plans", () => {
 			request: new Request("https://site.test/_emdash/api/plugins/paid-access/admin/restrictions", {
 				method: "POST",
 			}),
-			kv: {
-				get: async (key: string) => key === "humans_plans" ? MASONJAMES_PLANS : null,
+			settings: {
+				get: async (key: string) => key === "humansPlans" ? MASONJAMES_PLANS : null,
 			},
 			storage: {
 				restrictions: { get: vi.fn(), put },
-				taxonomyRestrictions: { get: vi.fn(), put: vi.fn() },
+				taxonomy_restrictions: { get: vi.fn(), put: vi.fn() },
 			},
 		};
 
-		await expect(restrictionsHandler(ctx)).resolves.toEqual({
+		await expect(invoke(restrictionsHandler, ctx)).resolves.toEqual({
 			ok: false,
 			error: "requiredPlanSlugs contains an unknown plan.",
 		});
@@ -82,13 +84,13 @@ describe("settings-defined restriction plans", () => {
 				passEligible: true,
 			},
 			request: new Request("https://site.test/_emdash/api/plugins/paid-access/admin/restrictions", { method: "POST" }),
-			kv: { get: async () => null },
+			settings: { get: async () => null },
 			storage: {
 				restrictions: { get: vi.fn(), put },
-				taxonomyRestrictions: { get: vi.fn(), put: vi.fn() },
+				taxonomy_restrictions: { get: vi.fn(), put: vi.fn() },
 			},
 		};
-		await expect(restrictionsHandler(ctx)).resolves.toMatchObject({ ok: true });
+		await expect(invoke(restrictionsHandler, ctx)).resolves.toMatchObject({ ok: true });
 		expect(put).toHaveBeenCalledWith("posts:post-1", expect.objectContaining({
 			policy: "agents-pay",
 			agentPrice: "$0.025",
@@ -101,13 +103,13 @@ describe("settings-defined restriction plans", () => {
 		const ctx = {
 			input: { collectionSlug: "posts", contentId: "post-1", policy: "members", agentPrice: "free" },
 			request: new Request("https://site.test/_emdash/api/plugins/paid-access/admin/restrictions", { method: "POST" }),
-			kv: { get: async () => null },
+			settings: { get: async () => null },
 			storage: {
 				restrictions: { get: vi.fn(), put },
-				taxonomyRestrictions: { get: vi.fn(), put: vi.fn() },
+				taxonomy_restrictions: { get: vi.fn(), put: vi.fn() },
 			},
 		};
-		await expect(restrictionsHandler(ctx)).resolves.toEqual({
+		await expect(invoke(restrictionsHandler, ctx)).resolves.toEqual({
 			ok: false,
 			error: "agentPrice must be a dollar amount with at most six decimals.",
 		});
@@ -125,13 +127,13 @@ describe("settings-defined restriction plans", () => {
 				passEligible: true,
 			},
 			request: new Request("https://site.test/_emdash/api/plugins/paid-access/admin/restrictions", { method: "POST" }),
-			kv: { get: async () => null },
+			settings: { get: async () => null },
 			storage: {
 				restrictions: { get: vi.fn(), put: vi.fn() },
-				taxonomyRestrictions: { get: vi.fn(), put },
+				taxonomy_restrictions: { get: vi.fn(), put },
 			},
 		};
-		await expect(restrictionsHandler(ctx)).resolves.toEqual({ ok: true });
+		await expect(invoke(restrictionsHandler, ctx)).resolves.toEqual({ ok: true });
 		expect(put).toHaveBeenCalledWith("category:premium", expect.objectContaining({
 			policy: "members-only",
 			agentPrice: null,

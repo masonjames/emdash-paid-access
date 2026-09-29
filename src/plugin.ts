@@ -2,77 +2,100 @@
 // Modified by Mason James, 2026-09-23.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-import { PluginRouteError, definePlugin } from "emdash";
+import type { SandboxedPlugin } from "emdash/plugin";
+import type { PageMetadataContribution } from "emdash";
 
 import { accessHandler } from "./handlers/access.js";
-import { entitlementHandler, offersHandler, receiptsHandler, unavailableAgentFeature } from "./handlers/agents.js";
+import { agentContextHandler, entitlementHandler, offersHandler, plansHandler, receiptsHandler, recordReceiptHandler, unavailableAgentFeature } from "./handlers/agents.js";
 import { logoutHandler, sendLinkHandler, sessionHandler, verifyHandler } from "./handlers/auth.js";
 import { checkoutCompleteHandler, checkoutHandler } from "./handlers/checkout.js";
 import { portalHandler } from "./handlers/portal.js";
 import { productsHandler } from "./handlers/products.js";
 import { restrictionsHandler } from "./handlers/restrictions.js";
 import { loadSettings, settingsHandler } from "./handlers/settings.js";
+import { getEntryRestrictions } from "./restrictions.js";
+import type { RouteHandler } from "./types.js";
+import { routeError } from "./utils.js";
 
-type Handler = (ctx: any) => Promise<unknown>;
-
-function unavailable(): never {
-	throw PluginRouteError.notFound("Paid Access module is disabled.");
+function humansStripeOnly(handler: RouteHandler): RouteHandler {
+	return async (routeCtx, ctx) => (await loadSettings(ctx)).humans.mode === "stripe"
+		? handler(routeCtx, ctx) : routeError("MODULE_DISABLED", "Paid Access human module is disabled.");
 }
 
-function humansStripeOnly(handler: Handler): Handler {
-	return async (ctx) => (await loadSettings(ctx)).humans.mode === "stripe" ? handler(ctx) : unavailable();
-}
-
-function anyModule(handler: Handler): Handler {
-	return async (ctx) => {
+function anyModule(handler: RouteHandler): RouteHandler {
+	return async (routeCtx, ctx) => {
 		const settings = await loadSettings(ctx);
-		return settings.agents.mode !== "off" || settings.humans.mode !== "off" ? handler(ctx) : unavailable();
+		return settings.agents.mode !== "off" || settings.humans.mode !== "off"
+			? handler(routeCtx, ctx) : routeError("MODULE_DISABLED", "Paid Access modules are disabled.");
 	};
 }
 
-function agentsOnly(handler: Handler): Handler {
-	return async (ctx) => (await loadSettings(ctx)).agents.mode !== "off" ? handler(ctx) : unavailable();
+function agentsOnly(handler: RouteHandler): RouteHandler {
+	return async (routeCtx, ctx) => (await loadSettings(ctx)).agents.mode !== "off"
+		? handler(routeCtx, ctx) : routeError("MODULE_DISABLED", "Paid Access agent module is disabled.");
 }
 
-export function createPlugin(_options: Record<string, unknown> = {}) {
-	return definePlugin({
-		id: "paid-access",
-		version: "0.1.0",
-		capabilities: ["network:request", "email:send", "content:read", "taxonomies:read"],
-		allowedHosts: ["api.stripe.com", "x402.org", "api.cloudflare.com"],
-		storage: {
-			restrictions: { indexes: ["contentId", "collectionSlug", "slug"] },
-			taxonomyRestrictions: { indexes: ["taxonomyName", "termId"] },
-			customers: { indexes: ["email"] },
-			authTokens: { indexes: ["email", "expiresAt"] },
-			sessions: { indexes: ["email", "expiresAt"] },
-			receipts: { indexes: ["entryId", "payer", "transaction", "createdAt"] },
+const adminStub: RouteHandler = async (_routeCtx, _ctx) => ({
+	blocks: [
+		{ type: "header", text: "Paid Access" },
+		{ type: "context", text: "Admin pages are coming in the next build." },
+	]
+});
+
+const plugin: SandboxedPlugin = {
+	hooks: {
+		"page:metadata": async ({ page }, ctx) => {
+			try {
+				if (page.kind !== "content" || !page.content) return null;
+				const { collection, id, slug } = page.content;
+				const rules = await getEntryRestrictions(ctx, collection, id, slug);
+				if (!rules.length) return null;
+				const settings = await loadSettings(ctx);
+				const contributions: PageMetadataContribution[] = [];
+				if (settings.agents.mode !== "off" && slug && !rules.some(({ policy }) => policy === "members-only")) {
+					// EmDash 1.0.1 link contributions have no MIME type field.
+					contributions.push({ kind: "link", rel: "alternate", href: `${settings.agentRoutePrefix}/${encodeURIComponent(collection)}/${encodeURIComponent(slug)}.md` });
+				}
+				if (rules.some(({ policy }) => policy === "members" || policy === "members-only")) {
+					contributions.push({
+						kind: "jsonld", id: "paid-access:paywall", graph: {
+							"@context": "https://schema.org", "@type": "WebPage", "@id": page.url, isAccessibleForFree: false,
+							hasPart: { "@type": "WebPageElement", isAccessibleForFree: false, cssSelector: ".phb-locked" },
+						}
+					});
+				}
+				return contributions.length ? contributions : null;
+			} catch (error) {
+				ctx.log.error("Failed to build Paid Access metadata", error);
+				return null;
+			}
 		},
-		routes: {
-			checkout: { public: true, handler: humansStripeOnly(checkoutHandler) },
-			"checkout/complete": { public: true, handler: humansStripeOnly(checkoutCompleteHandler) },
-			portal: { public: true, handler: humansStripeOnly(portalHandler) },
-			access: { public: true, handler: accessHandler },
-			entitlement: { public: true, handler: agentsOnly(entitlementHandler) },
-			offers: { public: true, handler: agentsOnly(offersHandler) },
-			pass: { public: true, handler: unavailableAgentFeature },
-			"agent-tokens": { handler: unavailableAgentFeature },
-			"admin/products": { handler: humansStripeOnly(productsHandler) },
-			"admin/restrictions": { handler: anyModule(restrictionsHandler) },
-			"admin/receipts": { handler: agentsOnly(receiptsHandler) },
-			"admin/settings": { handler: settingsHandler },
-			"auth/send-link": { public: true, handler: humansStripeOnly(sendLinkHandler) },
-			"auth/verify": { public: true, handler: humansStripeOnly(verifyHandler) },
-			"auth/session": { public: true, handler: humansStripeOnly(sessionHandler) },
-			"auth/logout": { public: true, handler: humansStripeOnly(logoutHandler) },
-		},
-		admin: {
-			entry: "emdash-paid-access/admin",
-			pages: [
-				{ path: "/settings", label: "Paid Access Settings" },
-				{ path: "/rules", label: "Paid Access Rules" },
-			],
-			widgets: [{ id: "overview", title: "Paid Access" }],
-		},
-	});
-}
+	},
+	routes: {
+		admin: { methods: ["POST"], handler: adminStub },
+		"editor/paid-access": { methods: ["POST"], handler: adminStub },
+		checkout: { methods: ["POST"], public: true, handler: humansStripeOnly(checkoutHandler) },
+		"checkout/complete": { methods: ["POST"], public: true, handler: humansStripeOnly(checkoutCompleteHandler) },
+		portal: { methods: ["POST"], public: true, handler: humansStripeOnly(portalHandler) },
+		access: { methods: ["POST"], public: true, handler: accessHandler },
+		plans: { methods: ["GET"], public: true, handler: humansStripeOnly(plansHandler) },
+		entitlement: { methods: ["GET"], public: true, handler: agentsOnly(entitlementHandler) },
+		offers: { methods: ["GET"], public: true, handler: agentsOnly(offersHandler) },
+		pass: { methods: ["POST"], public: true, handler: agentsOnly(unavailableAgentFeature) },
+		"agent-tokens": { methods: ["POST"], handler: humansStripeOnly(unavailableAgentFeature) },
+		"admin/products": { methods: ["GET"], handler: humansStripeOnly(productsHandler) },
+		"admin/restrictions": { methods: ["GET", "POST", "DELETE"], handler: anyModule(restrictionsHandler) },
+		"admin/receipts": { methods: ["GET"], handler: agentsOnly(receiptsHandler) },
+		"admin/settings": { methods: ["GET", "POST"], handler: settingsHandler },
+		"auth/send-link": { methods: ["POST"], public: true, handler: humansStripeOnly(sendLinkHandler) },
+		"auth/verify": { methods: ["POST"], public: true, handler: humansStripeOnly(verifyHandler) },
+		"auth/session": { methods: ["POST"], public: true, handler: humansStripeOnly(sessionHandler) },
+		"auth/logout": { methods: ["POST"], public: true, handler: humansStripeOnly(logoutHandler) },
+		// Phase 3c: runtime.handlePluginApiRoute("paid-access", "POST", path, request)
+		// invokes private routes without a user; HTTP dispatcher authentication remains required.
+		"agent/context": { methods: ["POST"], handler: agentContextHandler },
+		"receipts/record": { methods: ["POST"], handler: recordReceiptHandler },
+	},
+};
+
+export default plugin;

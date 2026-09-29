@@ -2,6 +2,8 @@
 // Modified by Mason James, 2026-09-23.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+import { invoke } from "./fixtures/route.js";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { checkoutCompleteHandler, checkoutHandler } from "../src/handlers/checkout.js";
@@ -48,15 +50,15 @@ function createCtx(options: {
 	input?: Record<string, unknown>;
 	requestUrl?: string;
 	relativeUrls?: boolean;
-	kvSeed?: Record<string, unknown>;
+	settingsSeed?: Record<string, unknown>;
 	email?: {
 		send?: ReturnType<typeof vi.fn>;
 	};
 }) {
-	const kvStore = new Map<string, unknown>(Object.entries(options.kvSeed ?? {}));
+	const settingsStore = new Map<string, unknown>(Object.entries(options.settingsSeed ?? {}));
 	const customers = createStorageCollection<Record<string, unknown>>();
 	const sessions = createStorageCollection<Record<string, unknown>>();
-	const authTokens = createStorageCollection<Record<string, unknown>>();
+	const auth_tokens = createStorageCollection<Record<string, unknown>>();
 
 	return {
 		input: options.input ?? {},
@@ -66,12 +68,12 @@ function createCtx(options: {
 		storage: {
 			customers,
 			sessions,
-			authTokens,
+			auth_tokens,
 		},
-		kv: {
-			get: async <T>(key: string): Promise<T | null> => ((kvStore.get(key) as T | undefined) ?? null),
+		settings: {
+			get: async <T>(key: string): Promise<T | null> => ((settingsStore.get(key) as T | undefined) ?? null),
 			set: async (key: string, value: unknown) => {
-				kvStore.set(key, value);
+				settingsStore.set(key, value);
 			},
 		},
 		http: {
@@ -134,9 +136,10 @@ describe("checkoutHandler", () => {
 				email: "member@example.com",
 				redirectUrl: "/resources/#subscribe",
 			},
-			kvSeed: {
-				stripe_secret_key: "sk_test_123",
-				humans_plans: TEST_PLANS,
+			settingsSeed: {
+				stripeSecretKey: "sk_test_123",
+				accountPath: "/members/",
+				humansPlans: TEST_PLANS,
 			},
 			email: {
 				send: vi.fn(async () => undefined),
@@ -144,11 +147,11 @@ describe("checkoutHandler", () => {
 			relativeUrls: true,
 		});
 
-		const result = await checkoutHandler(ctx);
+		const result = await invoke(checkoutHandler, ctx);
 
 		expect(result).toEqual({ ok: true, url: "https://checkout.stripe.com/pay/cs_test_123" });
 		expect(ctx.storage.sessions.put).not.toHaveBeenCalled();
-		expect(captured?.successUrl).toMatch(/^https:\/\/site\.test\/account\/complete\//);
+		expect(captured?.successUrl).toMatch(/^https:\/\/site\.test\/members\/complete\//);
 		expect(captured?.successUrl).toContain("session_id=%7BCHECKOUT_SESSION_ID%7D");
 		expect(captured?.successUrl).toContain("redirect=%2Fresources%2F%23subscribe");
 		expect(captured?.successUrl).not.toContain("session=");
@@ -163,13 +166,13 @@ describe("checkoutHandler", () => {
 				email: "member@example.com",
 				redirectUrl: "/resources/#subscribe",
 			},
-			kvSeed: {
-				stripe_secret_key: "sk_test_123",
-				humans_plans: TEST_PLANS,
+			settingsSeed: {
+				stripeSecretKey: "sk_test_123",
+				humansPlans: TEST_PLANS,
 			},
 		});
 
-		await expect(checkoutHandler(ctx)).resolves.toEqual({
+		await expect(invoke(checkoutHandler, ctx)).resolves.toEqual({
 			ok: false,
 			error: "Email delivery is not configured for this site yet.",
 		});
@@ -188,15 +191,14 @@ describe("checkoutCompleteHandler", () => {
 		});
 
 		const ctx = createCtx({
-			requestUrl:
-				"https://site.test/_emdash/api/plugins/paid-access/checkout/complete?session_id=cs_test_123&redirect=%2Fresources%2F%23subscribe",
-			kvSeed: {
-				stripe_secret_key: "sk_test_123",
+			input: { sessionId: "cs_test_123", redirect: "/resources/#subscribe" },
+			settingsSeed: {
+				stripeSecretKey: "sk_test_123",
 			},
 			email: { send },
 		});
 
-		const result = await checkoutCompleteHandler(ctx);
+		const result = await invoke(checkoutCompleteHandler, ctx);
 
 		expect(result).toMatchObject({
 			ok: true,
@@ -210,12 +212,12 @@ describe("checkoutCompleteHandler", () => {
 			}),
 		);
 		expect(ctx.storage.sessions.put).not.toHaveBeenCalled();
-		expect(ctx.storage.authTokens.put).toHaveBeenCalledTimes(1);
+		expect(ctx.storage.auth_tokens.put).toHaveBeenCalledTimes(1);
 		expect(ctx.storage.customers.put).toHaveBeenCalledWith(
 			"member@example.com",
 			expect.objectContaining({ stripeCustomerId: "cus_123" }),
 		);
-		const authToken = ctx.storage.authTokens.records.values().next().value as Record<string, unknown>;
+		const authToken = ctx.storage.auth_tokens.records.values().next().value as Record<string, unknown>;
 		expect(authToken.redirect).toBe("/resources/#subscribe");
 	});
 });

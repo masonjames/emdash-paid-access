@@ -2,22 +2,25 @@
 // Modified by Mason James, 2026-09-23.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+import type { PluginContext } from "emdash/plugin";
+import type { RouteContext } from "../types.js";
+
 import { normalizeAgentPrice, normalizeContentRestriction, normalizeTaxonomyRestriction } from "../restrictions.js";
 import type { AccessPolicy, ContentRestrictionRecord } from "../types.js";
-import { parsePlanSlugs, normalizeStringArray, nowIso } from "../utils.js";
+import { isRecord, parsePlanSlugs, normalizeStringArray, nowIso } from "../utils.js";
 import { loadSettings } from "./settings.js";
 
 const POLICIES: AccessPolicy[] = ["public", "agents-pay", "members", "members-only"];
 
-export async function restrictionsHandler(ctx: any) {
-	const method = ctx.request.method;
-	const url = new URL(ctx.request.url);
+export async function restrictionsHandler(routeCtx: RouteContext, ctx: PluginContext) {
+	const method = routeCtx.request.method;
+	const input = isRecord(routeCtx.input) ? routeCtx.input : {};
 
 	if (method === "GET") {
-		const type = url.searchParams.get("type") || "content";
+		const type = (typeof input.type === "string" ? input.type : null) || "content";
 		if (type === "taxonomy") {
-			const taxonomyName = url.searchParams.get("taxonomy");
-			const result = await ctx.storage.taxonomyRestrictions.query(
+			const taxonomyName = (typeof input.taxonomy === "string" ? input.taxonomy : null);
+			const result = await ctx.storage.taxonomy_restrictions.query(
 				taxonomyName ? { where: { taxonomyName }, limit: 200 } : { limit: 200 },
 			);
 			return {
@@ -30,9 +33,9 @@ export async function restrictionsHandler(ctx: any) {
 			};
 		}
 
-		const collectionSlug = url.searchParams.get("collection");
-		const contentId = url.searchParams.get("contentId");
-		const slug = url.searchParams.get("slug");
+		const collectionSlug = (typeof input.collection === "string" ? input.collection : null);
+		const contentId = (typeof input.contentId === "string" ? input.contentId : null);
+		const slug = (typeof input.slug === "string" ? input.slug : null);
 
 		if (collectionSlug && contentId) {
 			const items: Array<{ id: string; data: ContentRestrictionRecord }> = [];
@@ -68,7 +71,7 @@ export async function restrictionsHandler(ctx: any) {
 	}
 
 	if (method === "POST") {
-		const body: Record<string, unknown> = ctx.input && typeof ctx.input === "object" ? ctx.input : {};
+		const body: Record<string, unknown> = isRecord(routeCtx.input) ? routeCtx.input : {};
 		const settings = await loadSettings(ctx);
 		const taxonomy = body.type === "taxonomy";
 		const taxonomyName = typeof body.taxonomyName === "string" ? body.taxonomyName : "";
@@ -80,7 +83,7 @@ export async function restrictionsHandler(ctx: any) {
 		}
 		const key = taxonomy ? `${taxonomyName}:${termId}` : `${collectionSlug}:${contentId}`;
 		const existing = taxonomy
-			? normalizeTaxonomyRestriction(await ctx.storage.taxonomyRestrictions.get(key))
+			? normalizeTaxonomyRestriction(await ctx.storage.taxonomy_restrictions.get(key))
 			: normalizeContentRestriction(await ctx.storage.restrictions.get(key));
 		const merged: Record<string, unknown> = { ...existing, ...body };
 		const validPlanSlugs = settings.humans.plans.map((plan) => plan.slug);
@@ -103,7 +106,7 @@ export async function restrictionsHandler(ctx: any) {
 			return { ok: false, error: "A valid agentPrice is required for a policy sold to agents." };
 		}
 		if (taxonomy) {
-			await ctx.storage.taxonomyRestrictions.put(key, {
+			await ctx.storage.taxonomy_restrictions.put(key, {
 				taxonomyName,
 				termId,
 				requiredPlanSlugs,
@@ -136,10 +139,10 @@ export async function restrictionsHandler(ctx: any) {
 	}
 
 	if (method === "DELETE") {
-		const body = ctx.input && typeof ctx.input === "object" ? ctx.input : {};
+		const body = isRecord(routeCtx.input) ? routeCtx.input : {};
 		if ((body as Record<string, unknown>).type === "taxonomy") {
 			const key = `${String((body as Record<string, unknown>).taxonomyName || "")}:${String((body as Record<string, unknown>).termId || "")}`;
-			await ctx.storage.taxonomyRestrictions.delete(key);
+			await ctx.storage.taxonomy_restrictions.delete(key);
 			return { ok: true };
 		}
 

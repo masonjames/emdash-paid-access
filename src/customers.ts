@@ -2,11 +2,13 @@
 // Modified by Mason James, 2026-09-23.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+import type { PluginContext } from "emdash/plugin";
+
 import { StripeClient } from "./stripe.js";
 import type { CustomerRecord } from "./types.js";
 import { normalizeEmail, nowIso, unwrapStoredRecord } from "./utils.js";
 
-export async function getCustomerRecordByEmail(ctx: any, email: string): Promise<CustomerRecord | null> {
+export async function getCustomerRecordByEmail(ctx: PluginContext, email: string): Promise<CustomerRecord | null> {
 	const normalizedEmail = normalizeEmail(email);
 	if (!normalizedEmail) {
 		return null;
@@ -37,7 +39,7 @@ export async function getCustomerRecordByEmail(ctx: any, email: string): Promise
 }
 
 export async function upsertCustomerRecord(
-	ctx: any,
+	ctx: PluginContext,
 	email: string,
 	stripeCustomerId: string,
 ): Promise<CustomerRecord> {
@@ -59,7 +61,7 @@ export async function upsertCustomerRecord(
 }
 
 export async function findOrCreateCustomerRecord(
-	ctx: any,
+	ctx: PluginContext,
 	stripe: StripeClient,
 	email: string,
 ): Promise<CustomerRecord> {

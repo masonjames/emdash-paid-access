@@ -2,6 +2,9 @@
 // Modified by Mason James, 2026-09-23.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+import type { PluginContext } from "emdash/plugin";
+import type { RouteContext } from "../types.js";
+
 import { findOrCreateCustomerRecord, upsertCustomerRecord } from "../customers.js";
 import { getPlan, isBillingInterval } from "../plans.js";
 import { StripeClient } from "../stripe.js";
@@ -9,14 +12,14 @@ import { isRecord, normalizeEmail, sanitizeRedirectPath } from "../utils.js";
 import { isEmailReady, sendMagicLink } from "./auth.js";
 import { loadSettings } from "./settings.js";
 
-function buildAbsoluteUrl(ctx: any, path: string): string {
+function buildAbsoluteUrl(routeCtx: RouteContext, ctx: PluginContext, path: string): string {
 	const absolute = ctx.url(path);
-	const base = ctx.request ? new URL(ctx.request.url).origin : undefined;
+	const base = routeCtx.request ? new URL(routeCtx.request.url).origin : undefined;
 	return new URL(absolute, base).toString();
 }
 
-export async function checkoutHandler(ctx: any) {
-	const body = isRecord(ctx.input) ? ctx.input : {};
+export async function checkoutHandler(routeCtx: RouteContext, ctx: PluginContext) {
+	const body = isRecord(routeCtx.input) ? routeCtx.input : {};
 	const planSlug = body.planSlug;
 	const billingInterval = body.billingInterval;
 	const email = normalizeEmail(body.email);
@@ -43,7 +46,7 @@ export async function checkoutHandler(ctx: any) {
 
 	const productId = plan.stripeProductId;
 
-	const stripe = new StripeClient(settings.stripeSecretKey, ctx.http.fetch);
+	const stripe = new StripeClient(settings.stripeSecretKey, ctx.http!.fetch);
 	const price = await stripe.findRecurringPriceForProduct(productId, billingInterval);
 	if (!price) {
 		return {
@@ -53,7 +56,7 @@ export async function checkoutHandler(ctx: any) {
 	}
 
 	const customer = await findOrCreateCustomerRecord(ctx, stripe, email);
-	const successUrl = new URL(buildAbsoluteUrl(ctx, "/account/complete/"));
+	const successUrl = new URL(buildAbsoluteUrl(routeCtx, ctx, `${settings.accountPath}complete/`));
 	successUrl.searchParams.set("session_id", "{CHECKOUT_SESSION_ID}");
 	successUrl.searchParams.set("redirect", redirectPath);
 
@@ -61,16 +64,15 @@ export async function checkoutHandler(ctx: any) {
 		priceId: price.id,
 		customerId: customer.stripeCustomerId,
 		successUrl: successUrl.toString(),
-		cancelUrl: buildAbsoluteUrl(ctx, redirectPath),
+		cancelUrl: buildAbsoluteUrl(routeCtx, ctx, redirectPath),
 	});
 
 	return { ok: true, url: checkoutSession.url };
 }
 
-export async function checkoutCompleteHandler(ctx: any) {
-	const requestUrl = new URL(ctx.request.url);
-	const checkoutSessionId = requestUrl.searchParams.get("session_id")?.trim();
-	const redirectPath = sanitizeRedirectPath(requestUrl.searchParams.get("redirect"), "/account/");
+export async function checkoutCompleteHandler(routeCtx: RouteContext, ctx: PluginContext) {
+	const body = isRecord(routeCtx.input) ? routeCtx.input : {};
+	const checkoutSessionId = typeof body.sessionId === "string" ? body.sessionId.trim() : "";
 
 	if (!checkoutSessionId) {
 		return { ok: false, error: "A checkout session is required." };
@@ -84,7 +86,7 @@ export async function checkoutCompleteHandler(ctx: any) {
 		return { ok: false, error: "Stripe is not configured yet." };
 	}
 
-	const stripe = new StripeClient(settings.stripeSecretKey, ctx.http.fetch);
+	const stripe = new StripeClient(settings.stripeSecretKey, ctx.http!.fetch);
 	const checkoutSession = await stripe.getCheckoutSession(checkoutSessionId);
 	if (checkoutSession.status !== "complete") {
 		return { ok: false, error: "Your Stripe checkout has not completed yet." };
@@ -107,12 +109,13 @@ export async function checkoutCompleteHandler(ctx: any) {
 		await upsertCustomerRecord(ctx, email, checkoutSession.customer);
 	}
 
-	await sendMagicLink(ctx, {
+	const result = await sendMagicLink(routeCtx, ctx, {
 		email,
 		intent: "signin",
-		redirect: redirectPath,
+		redirect: sanitizeRedirectPath(body.redirect, settings.accountPath),
 	});
 
+	if ("error" in result) return result;
 	return {
 		ok: true,
 		email,

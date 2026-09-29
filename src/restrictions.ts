@@ -97,14 +97,14 @@ export async function getEntryRestrictions(
 	}
 
 	if (!ctx.taxonomies?.getEntryTerms) {
-		const result = await ctx.storage.taxonomyRestrictions.query({ limit: 1 });
+		const result = await ctx.storage.taxonomy_restrictions.query({ limit: 1 });
 		if (result.items.length > 0) throw new Error("Taxonomy access is unavailable.");
 		return records;
 	}
 
 	for (const term of await ctx.taxonomies.getEntryTerms(collectionSlug, contentId)) {
 		const rule = normalizeTaxonomyRestriction(
-			await ctx.storage.taxonomyRestrictions.get(`${term.taxonomy}:${term.id}`),
+			await ctx.storage.taxonomy_restrictions.get(`${term.taxonomy}:${term.id}`),
 		);
 		if (rule) records.push(rule);
 	}

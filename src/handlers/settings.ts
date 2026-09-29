@@ -2,6 +2,9 @@
 // Modified by Mason James, 2026-09-23.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+import type { PluginContext } from "emdash/plugin";
+import type { RouteContext } from "../types.js";
+
 import { normalizeHumanPlans } from "../plans.js";
 import type {
 	AgentMode,
@@ -10,7 +13,7 @@ import type {
 	PaidAccessSettings,
 	StripeEnvironment,
 } from "../types.js";
-import { isRecord, uniqueStrings } from "../utils.js";
+import { isRecord, sanitizeRedirectPath, uniqueStrings } from "../utils.js";
 import { isEmailReady } from "./auth.js";
 
 const AGENT_MODES: AgentMode[] = ["off", "tokens-only", "paid"];
@@ -54,30 +57,41 @@ export function resolveRequiredProductIds(
 	);
 }
 
-export async function loadSettings(ctx: any): Promise<PaidAccessSettings> {
-	const stripeSecretKey = (await ctx.kv.get("stripe_secret_key")) as string | null;
-	const storedPlans = await ctx.kv.get("humans_plans");
+function settingPath(value: unknown, fallback: string, trailingSlash: boolean): string {
+	if (value == null) return fallback;
+	if (typeof value !== "string" || !value || sanitizeRedirectPath(value, "") !== value || /[?#%]/.test(value)) {
+		throw new Error("Invalid Paid Access route path.");
+	}
+	const path = value.replace(/\/+$/, "");
+	return trailingSlash ? `${path}/` : path;
+}
+
+export async function loadSettings(ctx: PluginContext): Promise<PaidAccessSettings> {
+	const stripeSecretKey = (await ctx.settings.get("stripeSecretKey")) as string | null;
+	const storedPlans = await ctx.settings.get("humansPlans");
 	const plans = storedPlans == null ? [] : normalizeHumanPlans(storedPlans);
 	if (!plans) throw new Error("Stored Paid Access plan settings are invalid.");
 
 	return {
 		agents: {
-			mode: enumValue(await ctx.kv.get("agents_mode"), AGENT_MODES, DEFAULT_AGENTS.mode),
-			rail: enumValue(await ctx.kv.get("agents_rail"), AGENT_RAILS, DEFAULT_AGENTS.rail),
-			payTo: ((await ctx.kv.get("agents_pay_to")) as string | null) || "",
-			network: enumValue(await ctx.kv.get("agents_network"), NETWORKS, DEFAULT_AGENTS.network),
-			edgeTrust: ((await ctx.kv.get("agents_edge_trust")) as string | null) || "none",
+			mode: enumValue(await ctx.settings.get("agentsMode"), AGENT_MODES, DEFAULT_AGENTS.mode),
+			rail: enumValue(await ctx.settings.get("agentsRail"), AGENT_RAILS, DEFAULT_AGENTS.rail),
+			payTo: ((await ctx.settings.get("agentsPayTo")) as string | null) || "",
+			network: enumValue(await ctx.settings.get("agentsNetwork"), NETWORKS, DEFAULT_AGENTS.network),
+			edgeTrust: ((await ctx.settings.get("agentsEdgeTrust")) as string | null) || "none",
 		},
 		humans: {
-			mode: enumValue(await ctx.kv.get("humans_mode"), HUMAN_MODES, DEFAULT_HUMANS.mode),
+			mode: enumValue(await ctx.settings.get("humansMode"), HUMAN_MODES, DEFAULT_HUMANS.mode),
 			plans,
 		},
 		stripeSecretKey,
 		stripeSecretKeyMasked: maskSecretKey(stripeSecretKey),
-		stripePublishableKey: ((await ctx.kv.get("stripe_publishable_key")) as string | null) || "",
-		stripeAccountId: ((await ctx.kv.get("stripe_account_id")) as string | null) || "",
-		stripeEnvironment: normalizeStripeEnvironment(await ctx.kv.get("stripe_environment")),
-		showExcerpts: (await ctx.kv.get("show_excerpts")) !== "false",
+		stripePublishableKey: ((await ctx.settings.get("stripePublishableKey")) as string | null) || "",
+		stripeAccountId: ((await ctx.settings.get("stripeAccountId")) as string | null) || "",
+		stripeEnvironment: normalizeStripeEnvironment(await ctx.settings.get("stripeEnvironment")),
+		showExcerpts: ![false, "false"].includes((await ctx.settings.get("showExcerpts")) ?? true),
+		accountPath: settingPath(await ctx.settings.get("accountPath"), "/account/", true),
+		agentRoutePrefix: settingPath(await ctx.settings.get("agentRoutePrefix"), "/agents", false),
 		emailConfigured: await isEmailReady(ctx),
 		isConfigured: Boolean(stripeSecretKey),
 	};
@@ -110,17 +124,17 @@ function validateHumans(value: unknown, legacyPluginPresent: boolean): string | 
 	return null;
 }
 
-export async function settingsHandler(ctx: any) {
-	if (ctx.request.method === "GET") {
+export async function settingsHandler(routeCtx: RouteContext, ctx: PluginContext) {
+	if (routeCtx.request.method === "GET") {
 		const { stripeSecretKey: _secretKey, ...settings } = await loadSettings(ctx);
 		return settings;
 	}
 
-	if (ctx.request.method !== "POST") {
+	if (routeCtx.request.method !== "POST") {
 		return { ok: false, error: "Method not allowed." };
 	}
 
-	const body = isRecord(ctx.input) ? ctx.input : {};
+	const body = isRecord(routeCtx.input) ? routeCtx.input : {};
 	const error = body.agents !== undefined ? validateAgents(body.agents) : null;
 	const humanError = body.humans !== undefined ? validateHumans(body.humans, body.legacyPluginPresent === true) : null;
 	if (error || humanError) return { ok: false, error: error || humanError };
@@ -131,50 +145,69 @@ export async function settingsHandler(ctx: any) {
 		return { ok: false, error: "Invalid stripeEnvironment." };
 	}
 	if (body.showExcerpts !== undefined && typeof body.showExcerpts !== "boolean") return { ok: false, error: "showExcerpts must be a boolean." };
+	const paths: Record<string, string> = {};
+	for (const field of ["accountPath", "agentRoutePrefix"] as const) {
+		if (body[field] !== undefined) {
+			try { paths[field] = settingPath(body[field], field === "accountPath" ? "/account/" : "/agents", field === "accountPath"); }
+			catch { return { ok: false, error: `Invalid ${field}.` }; }
+		}
+	}
 	// legacyPluginPresent is a UI hint; phase 3's Astro runtime downgrade is the real coexistence guard.
 	if (body.disconnect === true) {
 		await Promise.all([
-			ctx.kv.delete("stripe_secret_key"),
-			ctx.kv.delete("stripe_publishable_key"),
-			ctx.kv.delete("stripe_account_id"),
-			ctx.kv.delete("stripe_environment"),
+			ctx.settings.delete("stripeSecretKey"),
+			ctx.settings.delete("stripePublishableKey"),
+			ctx.settings.delete("stripeAccountId"),
+			ctx.settings.delete("stripeEnvironment"),
 		]);
 		return { ok: true, disconnected: true };
+	}
+
+	// All input is validated before any write. Save the secret first: the host
+	// rejects it before persistence if encryption is unavailable.
+	try {
+		if (typeof body.stripeSecretKey === "string" && !body.stripeSecretKey.startsWith("sk_••••")) {
+			await ctx.settings.set("stripeSecretKey", body.stripeSecretKey.trim());
+		}
+	} catch (error) {
+		if ((isRecord(error) && error.code === "PLUGIN_SETTING_ENCRYPTION_KEY_MISSING") ||
+			(error instanceof Error && error.message.includes("Plugin secret settings require EMDASH_ENCRYPTION_KEY"))) {
+			return { ok: false, error: "Set EMDASH_ENCRYPTION_KEY on this site before saving a Stripe key." };
+		}
+		throw error;
 	}
 
 	if (body.agents !== undefined) {
 		const value = body.agents as Record<string, string>;
 		await Promise.all([
-			ctx.kv.set("agents_mode", value.mode), ctx.kv.set("agents_rail", value.rail),
-			ctx.kv.set("agents_pay_to", value.payTo.trim()), ctx.kv.set("agents_network", value.network),
-			ctx.kv.set("agents_edge_trust", value.edgeTrust.trim() || "none"),
+			ctx.settings.set("agentsMode", value.mode), ctx.settings.set("agentsRail", value.rail),
+			ctx.settings.set("agentsPayTo", value.payTo.trim()), ctx.settings.set("agentsNetwork", value.network),
+			ctx.settings.set("agentsEdgeTrust", value.edgeTrust.trim() || "none"),
 		]);
 	}
 	if (body.humans !== undefined) {
 		const value = body.humans as Record<string, unknown>;
 		await Promise.all([
-			ctx.kv.set("humans_mode", value.mode),
-			ctx.kv.set("humans_plans", normalizeHumanPlans(value.plans)),
+			ctx.settings.set("humansMode", value.mode),
+			ctx.settings.set("humansPlans", normalizeHumanPlans(value.plans)),
 		]);
 	}
 
-	if (typeof body.stripeSecretKey === "string" && !body.stripeSecretKey.startsWith("sk_••••")) {
-		await ctx.kv.set("stripe_secret_key", body.stripeSecretKey.trim());
-	}
 	if (typeof body.stripePublishableKey === "string" && !body.stripePublishableKey.startsWith("pk_••••")) {
-		await ctx.kv.set("stripe_publishable_key", body.stripePublishableKey.trim());
+		await ctx.settings.set("stripePublishableKey", body.stripePublishableKey.trim());
 	}
 	if (typeof body.stripeAccountId === "string") {
-		await ctx.kv.set("stripe_account_id", body.stripeAccountId.trim());
+		await ctx.settings.set("stripeAccountId", body.stripeAccountId.trim());
 	}
 	if (body.stripeEnvironment !== undefined) {
-		await ctx.kv.set("stripe_environment", normalizeStripeEnvironment(body.stripeEnvironment));
+		await ctx.settings.set("stripeEnvironment", normalizeStripeEnvironment(body.stripeEnvironment));
 	} else if (typeof body.stripeSecretKey === "string" && !body.stripeSecretKey.startsWith("sk_••••")) {
-		await ctx.kv.set("stripe_environment", body.stripeSecretKey.startsWith("sk_test_") ? "test" : "live");
+		await ctx.settings.set("stripeEnvironment", body.stripeSecretKey.startsWith("sk_test_") ? "test" : "live");
 	}
 	if (typeof body.showExcerpts === "boolean") {
-		await ctx.kv.set("show_excerpts", String(body.showExcerpts));
+		await ctx.settings.set("showExcerpts", body.showExcerpts);
 	}
 
+	for (const [key, value] of Object.entries(paths)) await ctx.settings.set(key, value);
 	return { ok: true };
 }

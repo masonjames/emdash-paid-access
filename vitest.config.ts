@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
-	server: { deps: { inline: ["@emdash-cms/x402"] } },
+	server: { host: "127.0.0.1", deps: { inline: ["@emdash-cms/x402"] } },
 	ssr: { noExternal: ["@emdash-cms/x402"] },
 	resolve: {
 		alias: {

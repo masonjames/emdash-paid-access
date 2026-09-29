@@ -2,6 +2,9 @@
 // Modified by Mason James, 2026-09-23.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+import type { PluginContext } from "emdash/plugin";
+import type { RouteContext } from "../types.js";
+
 import type { AccessDecision } from "../types.js";
 import { getCustomerRecordByEmail, upsertCustomerRecord } from "../customers.js";
 import { getEntryRestrictions } from "../restrictions.js";
@@ -10,39 +13,19 @@ import { isRecord, parsePlanSlugs, uniqueStrings } from "../utils.js";
 import { getSessionEmail } from "./auth.js";
 import { loadSettings, resolveRequiredProductIds } from "./settings.js";
 
-function parseRequiredPlanSlugsFromUrl(url: URL): string[] {
-	const allValues = url.searchParams.getAll("requiredPlanSlugs");
-	if (allValues.length === 0) {
-		const single = url.searchParams.get("requiredPlanSlugs");
-		return single ? single.split(",").map((value) => value.trim()).filter(Boolean) : [];
-	}
-	return allValues.map((value) => value.trim()).filter(Boolean);
-}
-
-function readAccessInput(ctx: any) {
-	const url = new URL(ctx.request.url);
-	const body = isRecord(ctx.input) ? ctx.input : {};
+function readAccessInput(routeCtx: RouteContext) {
+	const body = isRecord(routeCtx.input) ? routeCtx.input : {};
 	return {
-		contentId:
-			typeof body.contentId === "string" ? body.contentId : (url.searchParams.get("contentId") ?? "").trim(),
-		collectionSlug:
-			typeof body.collectionSlug === "string"
-				? body.collectionSlug
-				: (url.searchParams.get("collectionSlug") || url.searchParams.get("collection") || "").trim(),
-		slug:
-			typeof body.slug === "string"
-				? body.slug
-				: (url.searchParams.get("slug") || null),
-		requiredPlanSlugs:
-			Array.isArray(body.requiredPlanSlugs)
-				? parsePlanSlugs(body.requiredPlanSlugs)
-				: parseRequiredPlanSlugsFromUrl(url),
+		contentId: typeof body.contentId === "string" ? body.contentId.trim() : "",
+		collectionSlug: typeof body.collectionSlug === "string" ? body.collectionSlug.trim() : typeof body.collection === "string" ? body.collection.trim() : "",
+		slug: typeof body.slug === "string" ? body.slug : null,
+		requiredPlanSlugs: parsePlanSlugs(body.requiredPlanSlugs),
 	};
 }
 
-export async function accessHandler(ctx: any): Promise<AccessDecision | { ok: false; error: string }> {
+export async function accessHandler(routeCtx: RouteContext, ctx: PluginContext): Promise<AccessDecision | { ok: false; error: string }> {
 	const settings = await loadSettings(ctx);
-	const { contentId, collectionSlug, slug, requiredPlanSlugs: callerRequiredPlanSlugs } = readAccessInput(ctx);
+	const { contentId, collectionSlug, slug, requiredPlanSlugs: callerRequiredPlanSlugs } = readAccessInput(routeCtx);
 	if (!contentId || !collectionSlug) {
 		return { ok: false, error: "contentId and collectionSlug are required." };
 	}
@@ -75,7 +58,7 @@ export async function accessHandler(ctx: any): Promise<AccessDecision | { ok: fa
 			...(settings.humans.mode === "off" && restricted ? { error: "Member access is turned off for this site." } : {}),
 		};
 	}
-	const email = await getSessionEmail(ctx);
+	const email = await getSessionEmail(ctx, isRecord(routeCtx.input) ? routeCtx.input.sessionToken : undefined);
 	const authenticated = Boolean(email);
 
 	if (!restricted) {
@@ -115,7 +98,7 @@ export async function accessHandler(ctx: any): Promise<AccessDecision | { ok: fa
 		};
 	}
 
-	const stripe = new StripeClient(settings.stripeSecretKey, ctx.http.fetch);
+	const stripe = new StripeClient(settings.stripeSecretKey, ctx.http!.fetch);
 	const localCustomer = await getCustomerRecordByEmail(ctx, email);
 	if (localCustomer) {
 		try {

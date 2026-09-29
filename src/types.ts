@@ -2,6 +2,11 @@
 // Modified by Mason James, 2026-09-23.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+import type { SandboxedPlugin } from "emdash/plugin";
+
+export type RouteHandler = Extract<NonNullable<SandboxedPlugin["routes"]>[string], { handler: unknown }>["handler"];
+export type RouteContext = Parameters<RouteHandler>[0];
+
 import type { HumanPlan } from "./plans.js";
 
 export type StripeEnvironment = "live" | "test";
@@ -32,6 +37,8 @@ export interface PaidAccessSettings {
 	stripeAccountId: string;
 	stripeEnvironment: StripeEnvironment;
 	showExcerpts: boolean;
+	accountPath: string;
+	agentRoutePrefix: string;
 	emailConfigured: boolean;
 	isConfigured: boolean;
 }

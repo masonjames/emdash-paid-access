@@ -6,32 +6,40 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "emdash-plugin build",
+    "validate": "emdash-plugin validate",
+    "bundle": "emdash-plugin bundle"
   },
-  "main": "src/index.ts",
+  "main": "dist/index.mjs",
   "exports": {
-    ".": "./src/index.ts",
-    "./plugin": "./src/plugin.ts",
-    "./admin": "./src/admin.tsx",
-    "./plans": "./src/plans.ts",
-    "./resolver": "./src/resolver.ts"
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./sandbox": "./dist/plugin.mjs"
   },
   "peerDependencies": {
-    "emdash": ">=1.0.1",
-    "react": ">=19.0.0"
+    "emdash": ">=1.0.1"
   },
   "devDependencies": {
-    "@types/react": "^19.2.0",
+    "@emdash-cms/plugin-cli": "0.13.1",
     "@x402/core": "2.27.0",
     "@x402/evm": "2.27.0",
     "@x402/fetch": "2.27.0",
     "emdash": "1.0.1",
-    "react": "^19.2.0",
+    "tsdown": "0.20.3",
     "typescript": "^5.9.0",
     "viem": "2.56.8",
     "vitest": "^4.1.9"
   },
   "dependencies": {
     "@emdash-cms/x402": "1.0.1"
-  }
+  },
+  "files": [
+    "dist",
+    "emdash-plugin.jsonc",
+    "NOTICE.md",
+    "LICENSE"
+  ]
 }

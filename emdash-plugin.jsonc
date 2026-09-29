@@ -1,0 +1,117 @@
+// Copyright 2026 Mason James.
+// SPDX-License-Identifier: GPL-2.0-or-later
+{
+  "$schema": "./node_modules/@emdash-cms/plugin-cli/schemas/emdash-plugin.schema.json",
+  "slug": "paid-access",
+  "publisher": "did:plc:neov22wblqftd3653r6cl2gl", // masonjames.bsky.social — confirm with Mason before publishing
+  "license": "GPL-2.0-or-later",
+  "author": {
+    "name": "Mason James",
+    "url": "https://masonjames.com/plugins/paid-access/"
+  },
+  "security": {
+    "email": "hi@masonjames.com",
+    "url": "https://masonjames.com/.well-known/security.txt"
+  },
+  "name": "Paid Access",
+  "description": "Sell your posts to people with Stripe memberships and to AI agents with x402 USDC payments. Use either or both.",
+  "keywords": [
+    "paywall",
+    "memberships",
+    "stripe",
+    "x402",
+    "ai-agents"
+  ],
+  "repo": "https://github.com/masonjames/emdash-paid-access",
+  "release": {
+    "requires": {
+      "env:emdash": ">=1.0.1"
+    }
+  },
+  "capabilities": [
+    "content:read",
+    "taxonomies:read",
+    "network:request",
+    "email:send"
+  ],
+  "allowedHosts": [
+    "api.stripe.com"
+  ],
+  "storage": {
+    "restrictions": {
+      "indexes": [
+        "contentId",
+        "collectionSlug",
+        "slug"
+      ]
+    },
+    "taxonomy_restrictions": {
+      "indexes": [
+        "taxonomyName",
+        "termId"
+      ]
+    },
+    "customers": {
+      "indexes": [
+        "email"
+      ]
+    },
+    "auth_tokens": {
+      "indexes": [
+        "email",
+        "expiresAt"
+      ]
+    },
+    "sessions": {
+      "indexes": [
+        "email",
+        "expiresAt"
+      ]
+    },
+    "receipts": {
+      "indexes": [
+        "entryId",
+        "payer",
+        "transaction",
+        "createdAt"
+      ]
+    }
+  },
+  "admin": {
+    "pages": [
+      {
+        "path": "/settings",
+        "label": "Settings",
+        "icon": "settings"
+      },
+      {
+        "path": "/rules",
+        "label": "Rules"
+      },
+      {
+        "path": "/receipts",
+        "label": "Receipts"
+      }
+    ],
+    "widgets": [
+      {
+        "id": "overview",
+        "title": "Paid Access",
+        "size": "half"
+      }
+    ],
+    "editorPanels": [
+      {
+        "id": "paid-access",
+        "title": "Paid access",
+        "route": "editor/paid-access"
+      }
+    ],
+    "settingsSchema": {
+      "stripeSecretKey": {
+        "type": "secret",
+        "label": "Stripe secret key"
+      }
+    }
+  }
+}

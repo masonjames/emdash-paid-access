@@ -45,18 +45,6 @@ export function sanitizeRedirectPath(value: unknown, fallback = "/"): string {
 	return fallback;
 }
 
-export function getCookieValue(request: Request, name: string): string | null {
-	const cookieHeader = request.headers.get("cookie") || "";
-	for (const part of cookieHeader.split(";")) {
-		const [rawName, ...rawValue] = part.trim().split("=");
-		if (rawName !== name) {
-			continue;
-		}
-		return decodeURIComponent(rawValue.join("="));
-	}
-	return null;
-}
-
 export function unwrapStoredRecord<T>(record: unknown): T | null {
 	if (!record) {
 		return null;
@@ -91,4 +79,8 @@ export function uniqueStrings(values: Iterable<string | null | undefined>): stri
 export function parsePlanSlugs(value: unknown, validSlugs?: Iterable<string>): string[] {
 	const allowed = validSlugs ? new Set(validSlugs) : null;
 	return uniqueStrings(normalizeStringArray(value)).filter((slug) => !allowed || allowed.has(slug));
+}
+
+export function routeError(code: "MODULE_DISABLED" | "NOT_FOUND" | "BAD_REQUEST" | "UNAVAILABLE", message: string) {
+	return { ok: false as const, error: { code, message } };
 }
