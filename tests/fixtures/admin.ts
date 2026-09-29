@@ -7,26 +7,28 @@ import { expect } from "vitest";
 import { adminHandler, editorHandler } from "../../src/admin/index.js";
 import { invoke } from "./route.js";
 
+// Revisions for compare-and-set, like EmDash's plugin storage and KV.
 export function store(seed: Record<string, unknown> = {}) {
 	const data = new Map(Object.entries(seed));
-	return { data, get: async (key: string) => data.get(key) ?? null, set: async (key: string, value: unknown) => { data.set(key, value); }, delete: async (key: string) => data.delete(key) };
+	const revisions = new Map<string, string>(); let next = 0;
+	const revision = (key: string) => data.has(key) ? revisions.get(key) ?? "0" : null;
+	const set = async (key: string, value: unknown) => { data.set(key, value); revisions.set(key, String(++next)); };
+	return { data, set, get: async (key: string) => data.get(key) ?? null,
+		delete: async (key: string) => { revisions.delete(key); return data.delete(key); },
+		getVersioned: async (key: string) => data.has(key) ? { value: data.get(key), revision: revision(key)! } : null,
+		compareAndSet: async (key: string, expected: string | null, value: unknown) => {
+			if (revision(key) !== expected) return { applied: false };
+			await set(key, value); return { applied: true, revision: revision(key)! };
+		},
+		compareAndDelete: async (key: string, expected: string) => {
+			if (revision(key) !== expected) return { applied: false };
+			revisions.delete(key); data.delete(key); return { applied: true };
+		},
+	};
 }
 function collection() {
 	const s = store();
-	// Revisions for compare-and-set, like EmDash's plugin storage.
-	const revisions = new Map<string, string>(); let next = 0;
-	const put = async (key: string, value: unknown) => { s.data.set(key, value); revisions.set(key, String(++next)); };
-	return { ...s, put, set: put,
-		delete: async (key: string) => { revisions.delete(key); return s.data.delete(key); },
-		getVersioned: async (key: string) => s.data.has(key) ? { value: s.data.get(key), revision: revisions.get(key)! } : null,
-		compareAndSet: async (key: string, expected: string | null, value: unknown) => {
-			if ((revisions.get(key) ?? null) !== expected) return { applied: false };
-			await put(key, value); return { applied: true, revision: revisions.get(key)! };
-		},
-		compareAndDelete: async (key: string, expected: string) => {
-			if (revisions.get(key) !== expected) return { applied: false };
-			revisions.delete(key); s.data.delete(key); return { applied: true };
-		},
+	return { ...s, put: s.set,
 		query: async ({ limit = 200, cursor = "0", orderBy }: { limit?: number; cursor?: string; orderBy?: Record<string, string> } = {}) => {
 		let rows = [...s.data].map(([id, data]) => ({ id, data }));
 		if (orderBy) { const [key, direction] = Object.entries(orderBy)[0]; rows = rows.sort((a, b) => String((a.data as Record<string, unknown>)[key]).localeCompare(String((b.data as Record<string, unknown>)[key])) * (direction === "desc" ? -1 : 1)); }

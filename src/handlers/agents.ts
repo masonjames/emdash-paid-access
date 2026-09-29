@@ -47,22 +47,23 @@ export async function offersHandler(routeCtx: RouteContext, ctx: PluginContext) 
 	const cursor = typeof input.cursor === "string" ? input.cursor : "";
 	const taxonomyPage = cursor.startsWith("taxonomy:");
 	const settings = await loadSettings(ctx);
+	// Only paid mode sells anything.
+	if (settings.agents.mode !== "paid") return { items: [], nextCursor: null };
 	const items: Array<Record<string, string>> = [];
 	if (!taxonomyPage) {
 		const content = await ctx.storage.restrictions.query({ limit, ...(cursor.startsWith("content:") ? { cursor: cursor.slice(8) } : {}) });
-		const listed = new Set<string>();
-		for (const item of content.items as Array<{ data: unknown }>) {
+		for (const item of content.items as Array<{ id: string; data: unknown }>) {
 			const rule = normalizeContentRestriction(item.data);
 			if (!rule || !rule.agentPrice || !["agents-pay", "members"].includes(rule.policy) || !ctx.content) continue;
 			try {
 				const entry = await ctx.content.get(rule.collectionSlug, rule.contentId);
-				if (!entry || entry.status !== "published" || !entry.slug || listed.has(`${rule.collectionSlug}:${entry.id}`)) continue;
+				// Only the rule stored under the entry's ID lists it, so a legacy slug-keyed copy can't list it twice.
+				if (!entry || entry.status !== "published" || !entry.slug || item.id !== `${rule.collectionSlug}:${entry.id}`) continue;
 				// List what the agent route will actually sell, at the price it will charge.
 				const rules = await getEntryRestrictions(ctx, rule.collectionSlug, entry.id, entry.slug);
 				const access = resolveAccess({ policies: rules.map(r => r.policy), audience: "agent", agentsMode: settings.agents.mode, freeByDefault: settings.agents.freeByDefault });
 				const price = highestAgentPrice(rules);
 				if (access.agent !== "payment-required" || !price) continue;
-				listed.add(`${rule.collectionSlug}:${entry.id}`);
 				items.push({
 					type: "content", collection: rule.collectionSlug, slug: entry.slug,
 					title: typeof entry.data.title === "string" ? entry.data.title : rule.title ?? "",

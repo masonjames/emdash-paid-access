@@ -71,8 +71,8 @@ describe("agent plugin routes", () => {
 	});
 
 	it("lists what the agent route sells, once, at the price it charges", async () => {
-		const offers = (inherited: unknown) => invoke(offersHandler, {
-			request: new Request("https://site.test/offers"), settings: { get: kvGet },
+		const offers = (inherited: unknown, get = kvGet) => invoke(offersHandler, {
+			request: new Request("https://site.test/offers"), settings: { get },
 			content: { get: async () => ({ id: "1", status: "published", slug: "paid", data: { title: "Paid post" } }) },
 			taxonomies: { getEntryTerms: async () => [{ taxonomy: "tag", id: "t" }] },
 			storage: {
@@ -84,6 +84,8 @@ describe("agent plugin routes", () => {
 		const tag = (policy: string, agentPrice: string | null) => ({ taxonomyName: "tag", termId: "t", policy, agentPrice, createdAt: "2026-09-29" });
 		expect((await offers(tag("members-only", null))).items).toEqual([]);
 		expect((await offers(tag("members", "$0.05"))).items).toEqual([expect.objectContaining({ price: "$0.05", policy: "members" })]);
+		// Tokens-only mode sells nothing.
+		expect((await offers(tag("members", "$0.05"), async (key: string) => key === "agentsMode" ? "tokens-only" : kvGet(key))).items).toEqual([]);
 	});
 
 	it("skips drafts and pages taxonomy offers without private rule fields", async () => {

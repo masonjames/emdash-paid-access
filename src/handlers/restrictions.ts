@@ -162,13 +162,15 @@ export async function restrictionsHandler(routeCtx: RouteContext, ctx: PluginCon
 			return { ok: false, error: "contentId and collectionSlug are required." };
 		}
 
-		const key = `${collectionSlug}:${contentId}`;
-		const revision = expected(body);
-		if (revision === undefined) await ctx.storage.restrictions.delete(key);
-		else if (!(revision ? (await ctx.storage.restrictions.compareAndDelete(key, revision)).applied : !(await ctx.storage.restrictions.get(key)))) return STALE;
-		if (slug && slug !== contentId) {
-			await ctx.storage.restrictions.delete(`${collectionSlug}:${slug}`);
-		}
+		// Each key is guarded by its own revision when the caller sends one.
+		const remove = async (key: string, revision: string | undefined) => {
+			if (revision === undefined) return (await ctx.storage.restrictions.delete(key), true);
+			return revision ? (await ctx.storage.restrictions.compareAndDelete(key, revision)).applied : !(await ctx.storage.restrictions.get(key));
+		};
+		// The older slug-keyed rule goes first, so a conflict on it changes nothing.
+		const legacyRevision = typeof body.expectedLegacyRevision === "string" ? body.expectedLegacyRevision : undefined;
+		if (slug && slug !== contentId && !(await remove(`${collectionSlug}:${slug}`, legacyRevision))) return STALE;
+		if (!(await remove(`${collectionSlug}:${contentId}`, expected(body)))) return STALE;
 		return { ok: true };
 	}
 

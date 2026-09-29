@@ -79,7 +79,7 @@ describe("editor panel", () => {
 		expect(saved.toast).toEqual({ type: "success", message: "Saved. Readers see the change on their next visit." });
 		expect(await stored(ctx)).toMatchObject({ policy: "agents-pay", slug: "hello", title: "Hello" });
 		expect(JSON.stringify(saved)).toContain(AGENTS_PAY_WARNING); expect(ctx.storage.restrictions.data.has("posts:forged")).toBe(false);
-		expect((await act(ctx, saved, "remove")).toast?.message).toBe("Rule removed."); expect(ctx.storage.restrictions.data.size).toBe(0);
+		expect((await act(ctx, saved, "remove")).toast?.message).toBe("Rule removed. Site defaults and category or tag rules still apply."); expect(ctx.storage.restrictions.data.size).toBe(0);
 	});
 	it("shows a post without a rule as not offered, and offers only valid agent choices", async () => {
 		const ctx = fixture(paid);
@@ -87,6 +87,7 @@ describe("editor panel", () => {
 		expect(anyone.blocks[0]).toMatchObject({ fields: [{ label: "People", value: "Anyone" }, { label: "AI agents", value: "Not offered" }] });
 		expect(radioOptions(anyone, "agents")).toContain('"initial_value":"none"'); expect(radioOptions(anyone, "agents")).toContain('"label":"Not offered"');
 		expect((await act(ctx, anyone, "agents", "subscribers")).toast?.type).toBe("error"); expect(ctx.storage.restrictions.data.size).toBe(0);
+		// A refused value claims nothing, so the same panel's next click still works.
 		const members = await act(ctx, anyone, "people", "members");
 		expect(await stored(ctx)).toMatchObject({ policy: "members-only" });
 		expect(radioOptions(members, "agents")).toContain('"label":"Not sold to agents"'); expect(radioOptions(members, "agents")).not.toContain('"value":"free"');
@@ -97,7 +98,7 @@ describe("editor panel", () => {
 		const ctx = fixture(paid);
 		const members = await act(ctx, await load(ctx), "people", "members");
 		const choosePay = await act(ctx, members, "agents", "pay");
-		expect(choosePay.toast?.type).toBe("info"); expect(idFor(choosePay, "price")).toMatch(/^editor:price\|members\|pay\|/);
+		expect(choosePay.toast?.type).toBe("info"); expect(idFor(choosePay, "price")).toMatch(/^editor:price\|.*\|pay$/);
 		expect(await stored(ctx)).toMatchObject({ policy: "members-only" });
 		const priced = await act(ctx, choosePay, "price", "$0.05");
 		expect(priced.toast?.type).toBe("success"); expect(await stored(ctx)).toMatchObject({ policy: "members", agentPrice: "$0.05" });
@@ -109,11 +110,14 @@ describe("editor panel", () => {
 		const blank = await act(ctx, invalid, "price", "  ");
 		expect(blank.toast).toMatchObject({ type: "error", message: "Enter a price per read, or choose another option for AI agents." }); expect(await stored(ctx)).toMatchObject({ agentPrice: "$0.05" });
 	});
-	it("keeps an unsaved Pay choice when the audience changes", async () => {
+	it("saves an audience change at once and keeps an unpriced Pay choice", async () => {
 		const ctx = fixture(paid);
 		const pay = await act(ctx, await load(ctx), "agents", "pay");
 		const members = await act(ctx, pay, "people", "members");
-		expect(ctx.storage.restrictions.data.size).toBe(0); expect(idFor(members, "price")).toMatch(/^editor:price\|members\|pay\|/);
+		expect(await stored(ctx)).toMatchObject({ policy: "members-only" }); expect(idFor(members, "price")).toMatch(/\|pay$/);
+		// A price blur left over from the Anyone panel can't undo the saved audience.
+		expect((await act(ctx, pay, "price", "$0.06")).toast?.message).toContain("changed since the panel loaded");
+		expect(await stored(ctx)).toMatchObject({ policy: "members-only" });
 		await act(ctx, members, "price", "$0.05");
 		expect(await stored(ctx)).toMatchObject({ policy: "members", agentPrice: "$0.05" });
 	});
@@ -126,34 +130,67 @@ describe("editor panel", () => {
 		expect(late.toast?.message).toContain("changed since the panel loaded");
 		expect(await stored(ctx)).toMatchObject({ policy: "members", agentPrice: "$0.05" });
 	});
+	it("lets a click follow an unchanged or refused price blur from the same panel", async () => {
+		const ctx = fixture(paid); await ctx.storage.restrictions.put("posts:1", rule);
+		const panel = await load(ctx);
+		expect((await act(ctx, panel, "price", "$0.05")).toast).toBeUndefined();
+		expect((await act(ctx, panel, "price", "bad")).toast?.message).toBe("Enter a price like $0.05, with at most six decimals.");
+		expect((await act(ctx, panel, "agents", "free")).toast?.type).toBe("success"); expect(await stored(ctx)).toMatchObject({ policy: "public" });
+	});
+	it("refuses a leftover action even when the newer one saved nothing", async () => {
+		const ctx = fixture(paid);
+		const pay = await act(ctx, await load(ctx), "agents", "pay");
+		expect((await act(ctx, pay, "agents", "none")).toast?.type).toBe("success"); expect(ctx.storage.restrictions.data.size).toBe(0);
+		expect((await act(ctx, pay, "price", "$0.05")).toast?.message).toContain("changed since the panel loaded");
+		expect(ctx.storage.restrictions.data.size).toBe(0);
+	});
+	it("shows what's saved, not Pay, after a price loses to a newer save", async () => {
+		const ctx = fixture(paid);
+		const pay = await act(ctx, await load(ctx), "agents", "pay");
+		// Another writer saves Free for this post while the price is in flight.
+		await ctx.storage.restrictions.put("posts:1", { ...rule, policy: "public", agentPrice: null });
+		const late = await act(ctx, pay, "price", "$0.05");
+		expect(late.toast?.message).toContain("changed since the panel loaded"); expect(control(late, "price")).toBeUndefined();
+		expect(await stored(ctx)).toMatchObject({ policy: "public" });
+	});
 	it("clears the price when agents stop paying", async () => {
 		const ctx = fixture(paid); await ctx.storage.restrictions.put("posts:1", { ...rule, agentPrice: "$0.50" });
 		await act(ctx, await load(ctx), "agents", "free");
 		expect(await stored(ctx)).toMatchObject({ policy: "public", agentPrice: null });
 		const none = await act(ctx, await load(ctx), "agents", "none");
-		expect(none.toast?.message).toBe("Saved. AI agents aren't offered this post."); expect(ctx.storage.restrictions.data.size).toBe(0);
+		expect(none.toast?.message).toBe("Rule removed. Site defaults and category or tag rules still apply."); expect(ctx.storage.restrictions.data.size).toBe(0);
 	});
-	it("lets members' plans be chosen when Stripe memberships are on", async () => {
+	it("lets members' plans be chosen when Stripe memberships are on, even while Pay waits for a price", async () => {
 		const ctx = fixture({ ...paid, humansMode: "stripe", humansPlans: [{ slug: "premium", name: "Premium", stripeProductId: "prod_one", grantsVisibility: [] }] });
 		const members = await act(ctx, await load(ctx), "people", "members");
 		expect(idFor(members, "plans")).toMatch(/^editor:plans\|/); expect(JSON.stringify(members)).toContain('"label":"Premium"');
-		await act(ctx, members, "plans", ["premium"]);
-		expect(await stored(ctx)).toMatchObject({ policy: "members-only", requiredPlanSlugs: ["premium"] });
+		const pay = await act(ctx, members, "agents", "pay");
+		const planned = await act(ctx, pay, "plans", ["premium"]);
+		expect(await stored(ctx)).toMatchObject({ policy: "members-only", requiredPlanSlugs: ["premium"] }); expect(idFor(planned, "price")).toMatch(/\|pay$/);
+		await act(ctx, planned, "price", "$0.05");
+		expect(await stored(ctx)).toMatchObject({ policy: "members", agentPrice: "$0.05", requiredPlanSlugs: ["premium"] });
 	});
 	it("in delegate mode only asks what AI agents get", async () => {
 		const ctx = fixture({ ...paid, humansMode: "delegate" }); await ctx.kv.set("state:legacyPluginPresent", true);
 		const loaded = await load(ctx); const text = JSON.stringify(loaded);
 		expect(text).toContain("Restrict With Stripe decides who can read this post"); expect(text).not.toContain('"action_id":"editor:people'); expect(text).not.toContain("Review its rule in the Restrict panel");
-		expect((await editor(ctx, action(idFor(loaded, "agents").replace("editor:agents", "editor:people"), "members"))).toast?.type).toBe("error"); expect(ctx.storage.restrictions.data.size).toBe(0);
-		const priced = await act(ctx, await act(ctx, loaded, "agents", "pay"), "price", "$0.02");
+		// Forged audience actions can't restrict people in delegate mode.
+		expect((await editor(ctx, action(idFor(loaded, "agents").replace("editor:agents", "editor:people"), "members"))).toast?.type).toBe("error");
+		expect((await editor(ctx, action(idFor(await load(ctx), "agents").replace(/\|[^|]*$/, "|members"), "none"))).toast?.type).not.toBe("error"); expect(ctx.storage.restrictions.data.size).toBe(0);
+		const priced = await act(ctx, await act(ctx, await load(ctx), "agents", "pay"), "price", "$0.02");
 		expect(await stored(ctx)).toMatchObject({ policy: "agents-pay", agentPrice: "$0.02" }); expect(JSON.stringify(priced)).not.toContain(AGENTS_PAY_WARNING);
 		expect(JSON.stringify(await act(ctx, priced, "agents", "free"))).toContain("If Restrict With Stripe limits this post to members");
 	});
-	it("shows inherited and legacy rules and clears legacy keys only on removal", async () => {
+	it("shows inherited and legacy rules, allows only removal of a legacy rule, and guards it", async () => {
 		const ctx = fixture(paid); await ctx.storage.restrictions.put("posts:hello", { ...rule, policy: "members" });
 		await ctx.storage.taxonomy_restrictions.put("category:premium", { taxonomyName: "category", termId: "premium", policy: "members-only", createdAt: rule.createdAt });
-		const result = await load(ctx); expect(JSON.stringify(result)).toContain("Also covered by Category: Premium"); expect(JSON.stringify(result)).toContain("An older Paid Access rule also covers this post"); expect(JSON.stringify(result)).not.toContain("Agents can buy it at");
-		await act(ctx, result, "remove"); expect(ctx.storage.restrictions.data.size).toBe(0); expect(ctx.storage.taxonomy_restrictions.data.size).toBe(1);
+		const result = await load(ctx); const text = JSON.stringify(result);
+		expect(text).toContain("Also covered by Category: Premium"); expect(text).toContain("An older Paid Access rule also covers this post"); expect(text).not.toContain("Agents can buy it at");
+		expect(control(result, "agents")).toBeUndefined();
+		// A legacy rule that changed after the panel loaded isn't deleted from under it.
+		await ctx.storage.restrictions.put("posts:hello", { ...rule, policy: "members-only" });
+		expect((await act(ctx, result, "remove")).toast?.message).toContain("changed since the panel loaded"); expect(ctx.storage.restrictions.data.size).toBe(1);
+		await act(ctx, await load(ctx), "remove"); expect(ctx.storage.restrictions.data.size).toBe(0); expect(ctx.storage.taxonomy_restrictions.data.size).toBe(1);
 	});
 });
 
