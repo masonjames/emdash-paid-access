@@ -5,7 +5,7 @@ import type { APIContext } from "astro";
 import { getEmDashEntry } from "emdash";
 import { GET, HEAD } from "../src/astro/routes/agent-entry.js";
 import { GET as offers } from "../src/astro/routes/offers.js";
-vi.mock("emdash", () => ({ getEmDashEntry: vi.fn() }));
+vi.mock("emdash", () => ({ getEmDashEntry: vi.fn(), getCollectionInfo: vi.fn(async () => ({ urlPattern: "/blog/{slug}/" })) }));
 const agents = { mode: "paid", rail: "origin-x402", network: "eip155:84532", payTo: "0x1111111111111111111111111111111111111111", edgeTrust: "none" };
 const content = [{ _type: "block", style: "normal", children: [{ _type: "span", text: "SENTINEL_BODY", marks: [] }] }];
 function setup(rules: unknown[] = []) {
@@ -72,4 +72,11 @@ it("never forwards a payment signature on HEAD, so a HEAD can't settle", async (
 	const forwarded = (enforce.mock.calls[0] as unknown as [Request])[0];
 	expect(forwarded.headers.get("payment-signature")).toBeNull();
 	expect(forwarded.headers.get("x-payment")).toBeNull();
+});
+
+it("builds the canonical from the collection URL pattern when the plugin can't", async () => {
+	const { context, handler } = setup([{ policy: "public" }]);
+	handler.mockImplementation(async (_id: string, _method: string, path: string) => ({ success: true, data: path === "agent/context" ? { agents, rules: [{ policy: "public" }], canonicalUrl: null } : { ok: true } }));
+	const withSite = { ...context, site: new URL("https://site.test") } as APIContext;
+	expect(await (await GET(withSite)).text()).toContain('canonical: "https://site.test/blog/slug/"');
 });
