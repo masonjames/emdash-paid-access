@@ -66,7 +66,7 @@ export async function editorPanel(route: RouteContext, ctx: PluginContext): Prom
 		const { direct } = await directRule();
 		const current: State = answers(direct?.policy ?? "public") as State;
 		const price = direct?.agentPrice ?? null;
-		if (i.action === "editor:people" && (i.value === "anyone" || i.value === "members")) {
+		if (i.action === "editor:people" && settings.humans.mode !== "delegate" && (i.value === "anyone" || i.value === "members")) {
 			const next = withPeople(current, i.value);
 			if (next.agents === "pay" && !price && settings.agents.mode !== "off") pending = next;
 			else await save(next);
@@ -124,9 +124,11 @@ async function render(
 	}
 	const legacy = entry.slug && entry.slug !== identity.id ? normalizeContentRestriction(await ctx.storage.restrictions.get(`${identity.collection}:${entry.slug}`)) : null;
 	if (legacy) blocks.push(banner("An older Paid Access rule also covers this post. Remove the rule here to clear both saved versions before choosing new access.", "alert"));
-	if (await ctx.kv.get("state:legacyPluginPresent") === true) blocks.push(context("Restrict With Stripe may also restrict this post. Review its rule in the Restrict panel; this panel can't read that plugin's rules."));
+	const delegated = s.humans.mode === "delegate";
+	if (!delegated && await ctx.kv.get("state:legacyPluginPresent") === true) blocks.push(context("Restrict With Stripe may also restrict this post. Review its rule in the Restrict panel; this panel can't read that plugin's rules."));
 
-	blocks.push(radio("editor:people", "Who can read it for free?", PEOPLE_OPTIONS, state.people));
+	if (delegated) blocks.push(context("Restrict With Stripe decides who can read this post on your site. Here you choose what AI agents pay."));
+	else blocks.push(radio("editor:people", "Who can read it for free?", PEOPLE_OPTIONS, state.people));
 	blocks.push(radio("editor:agents", "What about AI agents?", AGENT_OPTIONS[state.people].map(value => ({ value, label: AGENT_LABELS[value] })), state.agents));
 	if (state.agents === "pay") {
 		const price: FormField = { type: "text_input", action_id: `editor:price:${state.people}`, label: "Price per read (USD)", initial_value: direct?.agentPrice ?? "", placeholder: "$0.05" };
@@ -140,7 +142,7 @@ async function render(
 	blocks.push(context("Changes save as you make them."));
 
 	const policy = direct?.policy;
-	if (policy === "agents-pay") blocks.push(banner(AGENTS_PAY_WARNING, "alert"));
+	if (policy === "agents-pay" && !delegated) blocks.push(banner(AGENTS_PAY_WARNING, "alert"));
 	if (s.agents.mode === "off") blocks.push(banner("AI agent sales are off for this site. Turn them on in Paid Access → Settings."));
 	if (s.humans.mode === "off" && rules.some(r => r.policy === "members" || r.policy === "members-only")) blocks.push(banner("Member access is off, so people can't unlock this post. Turn on Members in Paid Access → Settings.", "alert"));
 	if (entry.status === "published" && entry.slug && s.agents.mode === "paid" && rules.some(r => r.policy === "agents-pay" || r.policy === "members") && !rules.some(r => r.policy === "members-only")) {

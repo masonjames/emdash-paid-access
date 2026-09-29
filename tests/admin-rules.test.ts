@@ -93,6 +93,14 @@ describe("editor panel", () => {
 		await editor(ctx, action("editor:plans", ["premium"]));
 		expect(await ctx.storage.restrictions.get("posts:1")).toMatchObject({ policy: "members-only", requiredPlanSlugs: ["premium"] });
 	});
+	it("in delegate mode only asks what AI agents pay", async () => {
+		const ctx = fixture({ ...paid, humansMode: "delegate" }); await ctx.kv.set("state:legacyPluginPresent", true);
+		const loaded = JSON.stringify(await editor(ctx, { type: "panel_load" }));
+		expect(loaded).toContain("Restrict With Stripe decides who can read this post"); expect(loaded).not.toContain('"action_id":"editor:people"'); expect(loaded).not.toContain("Review its rule in the Restrict panel");
+		expect((await editor(ctx, action("editor:people", "members"))).toast?.type).toBe("error"); expect(ctx.storage.restrictions.data.size).toBe(0);
+		await editor(ctx, action("editor:agents", "pay")); const priced = await editor(ctx, action("editor:price:anyone", "$0.02"));
+		expect(await ctx.storage.restrictions.get("posts:1")).toMatchObject({ policy: "agents-pay", agentPrice: "$0.02" }); expect(JSON.stringify(priced)).not.toContain(AGENTS_PAY_WARNING);
+	});
 	it("shows inherited and legacy rules and clears legacy keys only on removal", async () => {
 		const ctx = fixture(paid); await ctx.storage.restrictions.put("posts:hello", { ...rule, policy: "members" });
 		await ctx.storage.taxonomy_restrictions.put("category:premium", { taxonomyName: "category", termId: "premium", policy: "members-only", createdAt: rule.createdAt });
