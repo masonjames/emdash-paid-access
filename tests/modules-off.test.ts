@@ -32,7 +32,7 @@ describe("both modules off", () => {
 			agents: { mode: "off" },
 			humans: { mode: "off" },
 		});
-		for (const routeName of Object.keys(plugin.routes).filter((name) => !["access", "admin/settings", "admin", "editor/paid-access", "agent/context", "receipts/record"].includes(name))) {
+		for (const routeName of Object.keys(plugin.routes).filter((name) => !["access", "admin/settings", "admin", "editor/paid-access", "agent/context", "receipts/record", "coexistence/report"].includes(name))) {
 			await expect(invoke(plugin.routes[routeName].handler, context())).resolves.toMatchObject({ ok: false, error: { code: "MODULE_DISABLED" } });
 		}
 	});

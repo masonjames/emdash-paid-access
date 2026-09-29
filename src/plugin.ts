@@ -2,6 +2,8 @@
 // Modified by Mason James, 2026-09-23.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+import { adminHandler, editorHandler, coexistenceReport } from "./admin/index.js";
+
 import type { SandboxedPlugin } from "emdash/plugin";
 import type { PageMetadataContribution } from "emdash";
 
@@ -35,13 +37,6 @@ function agentsOnly(handler: RouteHandler): RouteHandler {
 		? handler(routeCtx, ctx) : routeError("MODULE_DISABLED", "Paid Access agent module is disabled.");
 }
 
-const adminStub: RouteHandler = async (_routeCtx, _ctx) => ({
-	blocks: [
-		{ type: "header", text: "Paid Access" },
-		{ type: "context", text: "Admin pages are coming in the next build." },
-	]
-});
-
 const plugin: SandboxedPlugin = {
 	hooks: {
 		"page:metadata": async ({ page }, ctx) => {
@@ -72,8 +67,9 @@ const plugin: SandboxedPlugin = {
 		},
 	},
 	routes: {
-		admin: { methods: ["POST"], handler: adminStub },
-		"editor/paid-access": { methods: ["POST"], handler: adminStub },
+		admin: { methods: ["POST"], handler: adminHandler },
+		"editor/paid-access": { methods: ["POST"], handler: editorHandler },
+		"coexistence/report": { methods: ["POST"], handler: coexistenceReport },
 		checkout: { methods: ["POST"], public: true, handler: humansStripeOnly(checkoutHandler) },
 		"checkout/complete": { methods: ["POST"], public: true, handler: humansStripeOnly(checkoutCompleteHandler) },
 		portal: { methods: ["POST"], public: true, handler: humansStripeOnly(portalHandler) },

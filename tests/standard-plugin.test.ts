@@ -36,7 +36,7 @@ describe("standard plugin companion seams", () => {
 		for (const name of ["access", "auth/session", "auth/logout", "portal", "auth/verify", "checkout/complete", "checkout", "auth/send-link"]) {
 			expect(route(name)).toMatchObject({ methods: ["POST"], public: true });
 		}
-		for (const name of ["agent/context", "receipts/record", "admin/settings", "admin", "editor/paid-access"]) expect(route(name).public).not.toBe(true);
+		for (const name of ["agent/context", "receipts/record", "admin/settings", "admin", "editor/paid-access", "coexistence/report"]) expect(route(name).public).not.toBe(true);
 	});
 	it("returns private context including unioned rules and the highest price", async () => {
 		const ctx = context({ agentsMode: "paid", agentsNetwork: "eip155:84532" }, "agents-pay", "members-only");
@@ -70,12 +70,8 @@ describe("standard plugin companion seams", () => {
 		expect(JSON.stringify(result)).not.toMatch(/stripe|visibility|productId|sk_test/i);
 		for (const humansMode of ["off", "delegate"]) await expect(invoke(route("plans").handler, context({ humansMode }))).resolves.toMatchObject({ error: { code: "MODULE_DISABLED" } });
 	});
-	it("keeps both Block Kit stubs available with modules off", async () => {
-		for (const name of ["admin", "editor/paid-access"]) await expect(invoke(route(name).handler, context())).resolves.toEqual({
-			blocks: [
-				{ type: "header", text: "Paid Access" }, { type: "context", text: "Admin pages are coming in the next build." },
-			]
-		});
+	it("keeps the widget available with modules off", async () => {
+		await expect(invoke(route("admin").handler, { ...context(), input: { type: "page_load", page: "widget:overview" } })).resolves.toMatchObject({ blocks: [{ type: "empty", title: "Paid Access is off" }] });
 	});
 });
 

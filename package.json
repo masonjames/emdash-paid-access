@@ -23,6 +23,7 @@
     "emdash": ">=1.0.1"
   },
   "devDependencies": {
+    "@emdash-cms/blocks": "1.0.1",
     "@emdash-cms/plugin-cli": "0.13.1",
     "@x402/core": "2.27.0",
     "@x402/evm": "2.27.0",

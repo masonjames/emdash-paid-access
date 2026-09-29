@@ -59,10 +59,11 @@ export function resolveRequiredProductIds(
 
 function settingPath(value: unknown, fallback: string, trailingSlash: boolean): string {
 	if (value == null) return fallback;
-	if (typeof value !== "string" || !value || sanitizeRedirectPath(value, "") !== value || /[?#%]/.test(value)) {
+	if (typeof value !== "string" || !value || sanitizeRedirectPath(value, "") !== value || value.includes("..") || /[?#%]/.test(value)) {
 		throw new Error("Invalid Paid Access route path.");
 	}
 	const path = value.replace(/\/+$/, "");
+	if (!trailingSlash && !path) throw new Error("Choose an agent route prefix such as /agents.");
 	return trailingSlash ? `${path}/` : path;
 }
 
@@ -107,7 +108,7 @@ function validateAgents(value: unknown): string | null {
 	if (value.mode === "paid" && (!/^0x[0-9a-fA-F]{40}$/.test(value.payTo.trim()) || !value.network)) {
 		return "Paid agent access requires an EVM payTo address and network.";
 	}
-	if (value.rail === "gateway" && value.edgeTrust === "none") {
+	if (value.rail === "gateway" && (!value.edgeTrust.trim() || value.edgeTrust.trim() === "none")) {
 		return "Gateway rail requires a configured edgeTrust method.";
 	}
 	return null;
@@ -136,7 +137,7 @@ export async function settingsHandler(routeCtx: RouteContext, ctx: PluginContext
 
 	const body = isRecord(routeCtx.input) ? routeCtx.input : {};
 	const error = body.agents !== undefined ? validateAgents(body.agents) : null;
-	const humanError = body.humans !== undefined ? validateHumans(body.humans, body.legacyPluginPresent === true) : null;
+	const humanError = body.humans !== undefined ? validateHumans(body.humans, body.legacyPluginPresent === true || await ctx.kv?.get("state:legacyPluginPresent") === true) : null;
 	if (error || humanError) return { ok: false, error: error || humanError };
 	for (const field of ["stripeSecretKey", "stripePublishableKey", "stripeAccountId", "stripeEnvironment"] as const) {
 		if (body[field] !== undefined && typeof body[field] !== "string") return { ok: false, error: `${field} must be a string.` };
@@ -152,7 +153,7 @@ export async function settingsHandler(routeCtx: RouteContext, ctx: PluginContext
 			catch { return { ok: false, error: `Invalid ${field}.` }; }
 		}
 	}
-	// legacyPluginPresent is a UI hint; phase 3's Astro runtime downgrade is the real coexistence guard.
+	// Both the runtime report and the older caller hint refuse double-gating.
 	if (body.disconnect === true) {
 		await Promise.all([
 			ctx.settings.delete("stripeSecretKey"),
@@ -166,7 +167,7 @@ export async function settingsHandler(routeCtx: RouteContext, ctx: PluginContext
 	// All input is validated before any write. Save the secret first: the host
 	// rejects it before persistence if encryption is unavailable.
 	try {
-		if (typeof body.stripeSecretKey === "string" && !body.stripeSecretKey.startsWith("sk_••••")) {
+		if (typeof body.stripeSecretKey === "string" && body.stripeSecretKey.trim() !== "" && !body.stripeSecretKey.startsWith("sk_••••")) {
 			await ctx.settings.set("stripeSecretKey", body.stripeSecretKey.trim());
 		}
 	} catch (error) {
@@ -201,8 +202,8 @@ export async function settingsHandler(routeCtx: RouteContext, ctx: PluginContext
 	}
 	if (body.stripeEnvironment !== undefined) {
 		await ctx.settings.set("stripeEnvironment", normalizeStripeEnvironment(body.stripeEnvironment));
-	} else if (typeof body.stripeSecretKey === "string" && !body.stripeSecretKey.startsWith("sk_••••")) {
-		await ctx.settings.set("stripeEnvironment", body.stripeSecretKey.startsWith("sk_test_") ? "test" : "live");
+	} else if (typeof body.stripeSecretKey === "string" && body.stripeSecretKey.trim() !== "" && !body.stripeSecretKey.startsWith("sk_••••")) {
+		await ctx.settings.set("stripeEnvironment", body.stripeSecretKey.trim().startsWith("sk_test_") ? "test" : "live");
 	}
 	if (typeof body.showExcerpts === "boolean") {
 		await ctx.settings.set("showExcerpts", body.showExcerpts);

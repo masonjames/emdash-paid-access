@@ -24,7 +24,7 @@ export function normalizeAgentPrice(value: unknown): string | null {
 	return priceMicros(normalized) > 0n ? normalized : null;
 }
 
-function priceMicros(price: string): bigint {
+export function priceMicros(price: string): bigint {
 	const [whole, fraction = ""] = price.slice(1).split(".");
 	return BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, "0"));
 }
