@@ -13,7 +13,7 @@ it.each([true, false])("registers x402, virtual config, post middleware and rout
 	const injectRoute = vi.fn(); const addMiddleware = vi.fn(); const updateConfig = vi.fn();
 	const hook = paidAccessAstro({ injectAccountRoutes }).hooks["astro:config:setup"]!;
 	await hook({ injectRoute, addMiddleware, updateConfig } as unknown as Parameters<NonNullable<AstroIntegration["hooks"]["astro:config:setup"]>>[0]);
-	expect(injectRoute.mock.calls.map(([route]) => route.pattern)).toEqual(["/agents/[collection]/[slug].md", "/agents/offers", ...(injectAccountRoutes ? ["sign-in", "verify", "logout", "checkout", "complete", "portal"].map(action => `/account/${action}`) : [])]);
+	expect(injectRoute.mock.calls.map(([route]) => route.pattern)).toEqual(["/agents/[collection]/[slug].md", "/agents/offers.json", ...(injectAccountRoutes ? ["sign-in", "verify", "logout", "checkout", "complete", "portal"].map(action => `/account/${action}`) : [])]);
 	expect(addMiddleware).toHaveBeenCalledWith({ entrypoint: "emdash-paid-access/astro/middleware", order: "post" });
 	const config = updateConfig.mock.calls[0][0]; expect(config.integrations[0].name).toBe("@emdash-cms/x402");
 	expect(config.vite.plugins[0].load("\0virtual:paid-access/config")).toContain('"accountPath":"/account"');

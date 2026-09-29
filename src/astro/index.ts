@@ -23,7 +23,7 @@ export function paidAccessAstro(input: PaidAccessOptions = {}): AstroIntegration
 			});
 			addMiddleware({ entrypoint: "emdash-paid-access/astro/middleware", order: "post" });
 			injectRoute({ pattern: `${options.agentRoutePrefix}/[collection]/[slug].md`, entrypoint: "emdash-paid-access/astro/routes/agent-entry", prerender: false });
-			injectRoute({ pattern: `${options.agentRoutePrefix}/offers`, entrypoint: "emdash-paid-access/astro/routes/offers", prerender: false });
+			injectRoute({ pattern: `${options.agentRoutePrefix}/offers.json`, entrypoint: "emdash-paid-access/astro/routes/offers", prerender: false });
 			if (options.injectAccountRoutes) {
 				// Astro default trailingSlash: "ignore" matches both /verify and the core callback /verify/.
 				for (const action of ["sign-in", "verify", "logout", "checkout", "complete", "portal"]) {
