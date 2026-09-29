@@ -15,32 +15,39 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.mts",
-      "import": "./dist/index.mjs"
+      "import": "./dist/index.mjs",
+      "default": "./dist/index.mjs"
     },
     "./sandbox": "./dist/plugin.mjs",
     "./astro": {
       "types": "./dist/astro/index.d.mts",
-      "import": "./dist/astro/index.mjs"
+      "import": "./dist/astro/index.mjs",
+      "default": "./dist/astro/index.mjs"
     },
     "./astro/middleware": {
       "types": "./dist/astro/middleware.d.mts",
-      "import": "./dist/astro/middleware.mjs"
+      "import": "./dist/astro/middleware.mjs",
+      "default": "./dist/astro/middleware.mjs"
     },
     "./astro/runtime": {
       "types": "./dist/astro/runtime.d.mts",
-      "import": "./dist/astro/runtime.mjs"
+      "import": "./dist/astro/runtime.mjs",
+      "default": "./dist/astro/runtime.mjs"
     },
     "./astro/routes/agent-entry": {
       "types": "./dist/astro/routes/agent-entry.d.mts",
-      "import": "./dist/astro/routes/agent-entry.mjs"
+      "import": "./dist/astro/routes/agent-entry.mjs",
+      "default": "./dist/astro/routes/agent-entry.mjs"
     },
     "./astro/routes/offers": {
       "types": "./dist/astro/routes/offers.d.mts",
-      "import": "./dist/astro/routes/offers.mjs"
+      "import": "./dist/astro/routes/offers.mjs",
+      "default": "./dist/astro/routes/offers.mjs"
     },
     "./astro/routes/account": {
       "types": "./dist/astro/routes/account.d.mts",
-      "import": "./dist/astro/routes/account.mjs"
+      "import": "./dist/astro/routes/account.mjs",
+      "default": "./dist/astro/routes/account.mjs"
     },
     "./components/*": "./src/components/*"
   },
