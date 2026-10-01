@@ -19,6 +19,8 @@ let cachedProbe: Promise<boolean> | undefined;
 // ponytail: up to a minute of stale "absent" after enabling the legacy plugin; restart to close it at once.
 export const ABSENT_TTL_MS = 60_000;
 let absentSince = 0;
+/** When the current "absent" answer was probed, or 0. Callers that cache it expire with it. */
+export function legacyAbsentSince(): number { return absentSince; }
 let warnedAboutDowngrade = false;
 
 export function resetCoexistenceCacheForTests(): void {

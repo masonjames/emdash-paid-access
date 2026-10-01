@@ -3,7 +3,7 @@
 
 import type {} from "emdash/locals";
 import type {} from "@emdash-cms/x402/locals";
-import { ABSENT_TTL_MS, failClosedHumanDecision, probeLegacyPlugin, resolveHumanMode, unionAccessDecisions, type PublicPluginRouteHandler } from "../coexistence.js";
+import { ABSENT_TTL_MS, failClosedHumanDecision, legacyAbsentSince, probeLegacyPlugin, resolveHumanMode, unionAccessDecisions, type PublicPluginRouteHandler } from "../coexistence.js";
 import type { AccessDecision, HumanMode, MemberSessionState } from "../types.js";
 import type { HumanPlan } from "../plans.js";
 import { isRecord } from "../utils.js";
@@ -69,7 +69,8 @@ export function createPaidAccess(locals: PluginLocals, request: Request, session
 			const result = await callPlugin(locals, "coexistence/report", { legacyPluginPresent: present }, request);
 			if (!result.ok) throw new Error("Coexistence report unavailable");
 			if (["off", "stripe", "delegate"].includes(String(result.data.humanMode))) resolveHumanMode(result.data.humanMode as HumanMode, present);
-			reportedAbsentAt = present ? 0 : Date.now();
+			// Expire with the probe itself, however long reporting took.
+			reportedAbsentAt = present ? 0 : legacyAbsentSince();
 			return present;
 		})().catch(error => { reported = undefined; throw error; });
 		return reported;
