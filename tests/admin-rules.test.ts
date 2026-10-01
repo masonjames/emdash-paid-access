@@ -184,7 +184,12 @@ describe("editor panel", () => {
 		expect((await editor(ctx, action(idFor(await load(ctx), "agents").replace(/\|[^|]*$/, "|members"), "none"))).toast?.type).not.toBe("error"); expect(ctx.storage.restrictions.data.size).toBe(0);
 		const priced = await act(ctx, await act(ctx, await load(ctx), "agents", "pay"), "price", "$0.02");
 		expect(await stored(ctx)).toMatchObject({ policy: "agents-pay", agentPrice: "$0.02" }); expect(JSON.stringify(priced)).not.toContain(AGENTS_PAY_WARNING);
-		expect(JSON.stringify(await act(ctx, priced, "agents", "free"))).toContain("If Restrict With Stripe limits this post to members");
+		// Free isn't offered or accepted while another plugin decides who can read.
+		expect(JSON.stringify(priced)).not.toContain('"value":"free"');
+		expect((await act(ctx, priced, "agents", "free")).toast?.type).toBe("error"); expect(await stored(ctx)).toMatchObject({ policy: "agents-pay" });
+		// A rule saved as free before delegation still gets the warning.
+		await ctx.storage.restrictions.put("posts:1", { ...rule, policy: "public", agentPrice: null });
+		expect(JSON.stringify(await load(ctx))).toContain("ignored while Restrict With Stripe is active");
 	});
 	it("shows inherited and legacy rules, allows only removal of a legacy rule, and guards it", async () => {
 		const ctx = fixture(paid); await ctx.storage.restrictions.put("posts:hello", { ...rule, policy: "members" });

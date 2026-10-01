@@ -55,10 +55,12 @@ export async function settingsPage(route: RouteContext, ctx: PluginContext, edit
 					{ type: "radio", action_id: "agents_mode", label: "Sell to AI agents", ...(s.agents.mode !== "tokens-only" ? { initial_value: s.agents.mode } : {}), options: [{ value: "off", label: "Off" }, { value: "paid", label: "On — agents pay per read" }] },
 					{ type: "radio", action_id: "agents_network", label: "Network", condition: paid, initial_value: s.agents.network || "eip155:84532", options: [{ value: "eip155:84532", label: "Base Sepolia (test USDC)" }, { value: "eip155:8453", label: "Base (real USDC)" }] },
 					{ ...textField("agents_pay_to", "Payout wallet", s.agents.payTo, "0x…"), condition: paid },
-					{ type: "toggle", action_id: "agents_free_by_default", label: "Offer free Markdown for posts without a rule", initial_value: s.agents.freeByDefault, condition: paid },
+					...(s.humans.mode === "delegate" ? [] : [{ type: "toggle" as const, action_id: "agents_free_by_default", label: "Offer free Markdown for posts without a rule", initial_value: s.agents.freeByDefault, condition: paid }]),
 				]), ...(s.agents.mode === "paid" ? [
 					context("USDC goes straight to this address on Base. Use a wallet you control."),
-					context("Agents only get posts that have a Paid Access rule. Offering free Markdown for everything else is good for AI search, but leave it off if another plugin or your theme restricts some posts: agents would read those for free."),
+					s.humans.mode === "delegate"
+						? context("Agents only get posts that have a Paid Access rule, and never for free while Restrict With Stripe decides who can read.")
+						: context("Agents only get posts that have a Paid Access rule. Offering free Markdown for everything else is good for AI search, but leave it off if another plugin or your theme restricts some posts: agents would read those for free."),
 				] : []),
 				context(`Agents get each post as Markdown at ${s.agentRoutePrefix}/{collection}/{slug}.md and pay with the x402 protocol. People reading your site see no change.`),
 			] },

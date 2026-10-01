@@ -3,7 +3,7 @@
 
 import type {} from "emdash/locals";
 import type {} from "@emdash-cms/x402/locals";
-import { failClosedHumanDecision, probeLegacyPlugin, resolveHumanMode, unionAccessDecisions, type PublicPluginRouteHandler } from "../coexistence.js";
+import { ABSENT_TTL_MS, failClosedHumanDecision, probeLegacyPlugin, resolveHumanMode, unionAccessDecisions, type PublicPluginRouteHandler } from "../coexistence.js";
 import type { AccessDecision, HumanMode, MemberSessionState } from "../types.js";
 import type { HumanPlan } from "../plans.js";
 import { isRecord } from "../utils.js";
@@ -55,17 +55,21 @@ function validDecision(value: unknown): value is HumanDecision {
 export function canRenderBody(decision: AccessDecision): boolean { return decision.hasAccess === true && !decision.error; }
 
 let reported: Promise<boolean> | undefined;
-export function resetRuntimeForTests(): void { reported = undefined; }
+let reportedAbsentAt = 0;
+export function resetRuntimeForTests(): void { reported = undefined; reportedAbsentAt = 0; }
 
 export function createPaidAccess(locals: PluginLocals, request: Request, sessionToken: string | null, options: Required<PaidAccessOptions>) {
 	const memo = new Map<string, Promise<HumanDecision>>();
 	async function probe(): Promise<boolean> {
 		if (!locals.emdash) throw new Error("EmDash unavailable");
+		// Recheck an "absent" answer once it's stale, and report the new one to the core.
+		if (reportedAbsentAt && Date.now() - reportedAbsentAt > ABSENT_TTL_MS) { reported = undefined; reportedAbsentAt = 0; }
 		reported ??= (async () => {
 			const present = await probeLegacyPlugin((_id, method, path, req) => locals.emdash!.handlePublicPluginApiRoute(options.legacyPluginId, method, path, req), request);
 			const result = await callPlugin(locals, "coexistence/report", { legacyPluginPresent: present }, request);
 			if (!result.ok) throw new Error("Coexistence report unavailable");
 			if (["off", "stripe", "delegate"].includes(String(result.data.humanMode))) resolveHumanMode(result.data.humanMode as HumanMode, present);
+			reportedAbsentAt = present ? 0 : Date.now();
 			return present;
 		})().catch(error => { reported = undefined; throw error; });
 		return reported;
@@ -91,6 +95,8 @@ export function createPaidAccess(locals: PluginLocals, request: Request, session
 	}
 	return {
 		options, sessionToken,
+		/** Tell the core whether the legacy plugin is active. Throws when that can't be established. */
+		detectLegacy: probe,
 		access(input: AccessInput) {
 			const key = JSON.stringify([input.collection, input.id, input.slug, input.requiredPlanSlugs ?? []]);
 			if (!memo.has(key)) memo.set(key, access(input));

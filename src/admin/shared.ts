@@ -51,7 +51,7 @@ export function summary(rule: { policy: AccessPolicy; agentPrice?: string | null
 export function ruleFields(settings: PaidAccessSettings, rule?: { policy: AccessPolicy; agentPrice?: string | null; requiredPlanSlugs?: string[] }): FormField[] {
 	const a = answers(rule?.policy ?? "public");
 	if (settings.humans.mode === "delegate") return [
-		{ type: "radio", action_id: "agents", label: "What do AI agents get?", initial_value: a.agents === "subscribers" ? "pay" : a.agents, options: [{ value: "free", label: "Free — they read it as Markdown" }, { value: "pay", label: "Pay per read (x402, USDC)" }] },
+		{ type: "radio", action_id: "agents", label: "What do AI agents get?", initial_value: "pay", options: [{ value: "pay", label: "Pay per read (x402, USDC)" }] },
 		{ ...textField("price", "Price per read (USD)", rule?.agentPrice ?? "", "$0.05"), condition: { field: "agents", eq: "pay" } },
 	];
 	return [

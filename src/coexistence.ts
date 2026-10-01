@@ -14,10 +14,16 @@ export type PublicPluginRouteHandler = (
 ) => Promise<{ success: boolean; status?: number; data?: unknown; error?: unknown }>;
 
 let cachedProbe: Promise<boolean> | undefined;
+// "Present" is cached for the life of the process. "Absent" is rechecked, because a
+// plugin can be enabled without a restart.
+// ponytail: up to a minute of stale "absent" after enabling the legacy plugin; restart to close it at once.
+export const ABSENT_TTL_MS = 60_000;
+let absentSince = 0;
 let warnedAboutDowngrade = false;
 
 export function resetCoexistenceCacheForTests(): void {
 	cachedProbe = undefined;
+	absentSince = 0;
 	warnedAboutDowngrade = false;
 }
 
@@ -25,8 +31,12 @@ export function probeLegacyPlugin(
 	handler: PublicPluginRouteHandler,
 	request: Request,
 ): Promise<boolean> {
+	if (absentSince && Date.now() - absentSince > ABSENT_TTL_MS) { cachedProbe = undefined; absentSince = 0; }
 	cachedProbe ??= handler(LEGACY_PLUGIN_ID, "GET", LEGACY_SESSION_ROUTE, request).then((result) => {
-		if (result.status === 404 || (!result.success && typeof result.error === "object" && result.error !== null && "code" in result.error && result.error.code === "NOT_FOUND")) return false;
+		if (result.status === 404 || (!result.success && typeof result.error === "object" && result.error !== null && "code" in result.error && result.error.code === "NOT_FOUND")) {
+			absentSince = Date.now();
+			return false;
+		}
 		if (!result.success) throw new Error("Legacy membership plugin probe failed.");
 		return true;
 	}).catch((error: unknown) => {

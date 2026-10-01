@@ -79,3 +79,22 @@ it("retries after a failed probe", async () => {
 	await expect(probeLegacyPlugin(handler, request)).resolves.toBe(true);
 	expect(handler).toHaveBeenCalledTimes(2);
 });
+
+it("rechecks an absent legacy plugin after a minute, and keeps a present one", async () => {
+	resetCoexistenceCacheForTests();
+	vi.useFakeTimers();
+	try {
+		const request = new Request("https://site.test/");
+		const handler = vi.fn(async () => ({ success: false, status: 404 }) as { success: boolean; status?: number });
+		await expect(probeLegacyPlugin(handler, request)).resolves.toBe(false);
+		await expect(probeLegacyPlugin(handler, request)).resolves.toBe(false);
+		expect(handler).toHaveBeenCalledTimes(1);
+		// The plugin is enabled without a restart.
+		handler.mockResolvedValue({ success: true });
+		vi.advanceTimersByTime(61_000);
+		await expect(probeLegacyPlugin(handler, request)).resolves.toBe(true);
+		vi.advanceTimersByTime(600_000);
+		await expect(probeLegacyPlugin(handler, request)).resolves.toBe(true);
+		expect(handler).toHaveBeenCalledTimes(2);
+	} finally { vi.useRealTimers(); resetCoexistenceCacheForTests(); }
+});

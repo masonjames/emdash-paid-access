@@ -4,7 +4,7 @@
 import type { Block, BlockResponse, FormField } from "@emdash-cms/blocks";
 import type { PluginContext } from "emdash/plugin";
 import { restrictionsHandler } from "../handlers/restrictions.js";
-import { loadSettings } from "../handlers/settings.js";
+import { agentsNeverFree, loadSettings } from "../handlers/settings.js";
 import { getEntryRestrictions, normalizeAgentPrice, normalizeContentRestriction, priceFromInput } from "../restrictions.js";
 import type { AccessPolicy, ContentRestrictionRecord, PaidAccessSettings, RouteContext } from "../types.js";
 import { AGENTS_PAY_WARNING, banner, confirmButton, context, failure, interaction, request, str, summary } from "./shared.js";
@@ -31,6 +31,7 @@ type Agents = "none" | "free" | "pay";
 type State = { people: People; agents: Agents };
 
 const AGENT_OPTIONS: Record<People, Agents[]> = { anyone: ["none", "free", "pay"], members: ["pay", "none"] };
+const agentOptions = (people: People, neverFree: boolean) => AGENT_OPTIONS[people].filter(value => !(neverFree && value === "free"));
 const SALE: AccessPolicy[] = ["agents-pay", "members"];
 const STATES: Record<AccessPolicy, State> = {
 	public: { people: "anyone", agents: "free" },
@@ -90,7 +91,7 @@ export async function editorPanel(route: RouteContext, ctx: PluginContext): Prom
 		// Everything that needs no write is settled before the action claims the panel,
 		// so an unchanged blur or a refused value can't refuse the next click.
 		const valid = kind === "people" ? settings.humans.mode !== "delegate" && (value === "anyone" || value === "members")
-			: kind === "agents" ? AGENT_OPTIONS[current.people].includes(value as Agents)
+			: kind === "agents" ? agentOptions(current.people, await agentsNeverFree(ctx, settings)).includes(value as Agents)
 			: kind === "price" ? shown.agents === "pay"
 			: kind === "plans" ? current.people === "members"
 			: kind === "remove";
@@ -167,16 +168,18 @@ async function render(
 	epoch: string,
 ): Promise<Block[]> {
 	const delegated = s.humans.mode === "delegate";
+	const neverFree = await agentsNeverFree(ctx, s);
 	const direct = own ?? legacy;
 	const current: State = own ? STATES[own.policy] : { people: "anyone", agents: "none" };
 	const state: State = pendingPay ? { ...current, agents: "pay" } : current;
 	const id = (kind: string) => `editor:${kind}|${rev}|${pendingPay ? "pay" : ""}`;
-	const radio = (kind: string, label: string, options: Array<{ value: string; label: string }>, initial_value: string): Block =>
-		({ type: "actions", block_id: `editor:${kind}/${epoch}`, elements: [{ type: "radio", action_id: id(kind), label, options, initial_value }] });
+	// A saved choice that's no longer offered (free, once delegated) leaves the radio unselected.
+	const radio = (kind: string, label: string, options: Array<{ value: string; label: string }>, initial: string): Block =>
+		({ type: "actions", block_id: `editor:${kind}/${epoch}`, elements: [{ type: "radio", action_id: id(kind), label, options, ...(options.some(o => o.value === initial) ? { initial_value: initial } : {}) }] });
 
-	const noneLabel = state.people === "members" ? "Not sold to agents" : s.agents.freeByDefault ? "Site default: free Markdown" : "Not offered";
+	const noneLabel = state.people === "members" ? "Not sold to agents" : s.agents.freeByDefault && !neverFree ? "Site default: free Markdown" : "Not offered";
 	const agentsLabels: Record<Agents, string> = { none: noneLabel, free: "Free — they read it as Markdown", pay: "Pay per read (x402, USDC)" };
-	const savedAgents = s.agents.mode === "off" ? "Off" : direct ? summary(direct).agents : s.agents.freeByDefault ? "Free (site default)" : "Not offered";
+	const savedAgents = s.agents.mode === "off" ? "Off" : direct?.policy === "public" && neverFree ? "Not offered" : direct ? summary(direct).agents : s.agents.freeByDefault && !neverFree ? "Free (site default)" : "Not offered";
 	const blocks: Block[] = [{ type: "fields", fields: [{ label: "People", value: direct ? summary(direct).people : "Anyone" }, { label: "AI agents", value: savedAgents }] }];
 
 	const inherited = rules.filter(r => "taxonomyName" in r);
@@ -196,7 +199,7 @@ async function render(
 
 	if (delegated) blocks.push(context("Restrict With Stripe decides who can read this post on your site. Here you choose what AI agents get."));
 	else blocks.push(radio("people", "Who can read it for free?", [{ value: "anyone", label: "Anyone" }, { value: "members", label: "Members only" }], state.people));
-	blocks.push(radio("agents", "What about AI agents?", AGENT_OPTIONS[state.people].map(value => ({ value, label: agentsLabels[value] })), state.agents));
+	blocks.push(radio("agents", "What about AI agents?", agentOptions(state.people, neverFree).map(value => ({ value, label: agentsLabels[value] })), state.agents));
 	if (state.agents === "pay") {
 		const price: FormField = { type: "text_input", action_id: id("price"), label: "Price per read (USD)", initial_value: own && SALE.includes(own.policy) ? own.agentPrice ?? "" : "", placeholder: "$0.05" };
 		blocks.push({ type: "actions", block_id: `editor:price/${epoch}`, elements: [price] }, context("Agents pay this in USDC before they get the full post, up to six decimals. It saves when you leave the field."));
@@ -210,7 +213,7 @@ async function render(
 
 	const policy = own?.policy;
 	if (policy === "agents-pay" && !delegated) blocks.push(banner(AGENTS_PAY_WARNING, "alert"));
-	if (policy === "public" && delegated) blocks.push(banner("Free Markdown includes the whole post. If Restrict With Stripe limits this post to members, choose Pay per read or Not offered.", "alert"));
+	if (policy === "public" && neverFree) blocks.push(banner("This post was set to free for AI agents. That's ignored while Restrict With Stripe is active: agents can't read it. Choose Pay per read to sell it.", "alert"));
 	if (s.agents.mode === "off") blocks.push(banner("AI agent sales are off for this site. Turn them on in Paid Access → Settings."));
 	if (s.humans.mode === "off" && rules.some(r => r.policy === "members" || r.policy === "members-only")) blocks.push(banner("Member access is off, so people can't unlock this post. Turn on Members in Paid Access → Settings.", "alert"));
 	if (entry.status === "published" && entry.slug && s.agents.mode === "paid" && rules.some(r => SALE.includes(r.policy)) && !rules.some(r => r.policy === "members-only")) {

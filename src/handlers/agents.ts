@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 import type { PluginContext } from "emdash/plugin";
-import type { RouteContext } from "../types.js";
+import type { RouteContext, PaidAccessSettings } from "../types.js";
 
 
 import { getEntryRestrictions, highestAgentPrice, normalizeAgentPrice, normalizeContentRestriction, normalizeTaxonomyRestriction } from "../restrictions.js";
 import { resolveAccess } from "../resolver.js";
 import type { ReceiptRecord } from "../types.js";
 import { isRecord, routeError } from "../utils.js";
-import { loadSettings } from "./settings.js";
+import { agentsNeverFree, loadSettings } from "./settings.js";
 
 function readEntry(input: unknown): { collectionSlug: string; contentId: string; slug: string | null } {
 	const body = isRecord(input) ? input : {};
@@ -20,19 +20,23 @@ function readEntry(input: unknown): { collectionSlug: string; contentId: string;
 	};
 }
 
+// When agents never read free, rules saved as free stop applying, and so does free-by-default.
+async function forAgents<R extends { policy: string }>(ctx: PluginContext, settings: PaidAccessSettings, rules: R[]) {
+	const never = await agentsNeverFree(ctx, settings);
+	return { rules: never ? rules.filter(rule => rule.policy !== "public") : rules, freeByDefault: !never && settings.agents.freeByDefault };
+}
+
 export async function entitlementHandler(routeCtx: RouteContext, ctx: PluginContext) {
 	const entry = readEntry(routeCtx.input);
 	if (!entry.collectionSlug || !entry.contentId) return routeError("BAD_REQUEST", "collection and contentId are required.");
 	try {
-		const [settings, rules] = await Promise.all([
-			loadSettings(ctx),
-			getEntryRestrictions(ctx, entry.collectionSlug, entry.contentId, entry.slug),
-		]);
+		const settings = await loadSettings(ctx);
+		const { rules, freeByDefault } = await forAgents(ctx, settings, await getEntryRestrictions(ctx, entry.collectionSlug, entry.contentId, entry.slug));
 		const result = resolveAccess({
 			policies: rules.map((rule) => rule.policy),
 			audience: "agent",
 			agentsMode: settings.agents.mode,
-			freeByDefault: settings.agents.freeByDefault,
+			freeByDefault,
 		});
 		return { ...result, price: highestAgentPrice(rules) };
 	} catch {
@@ -106,9 +110,10 @@ export async function agentContextHandler(routeCtx: RouteContext, ctx: PluginCon
 	if (typeof input.collection !== "string" || !input.collection.trim() || typeof input.contentId !== "string" || !input.contentId.trim() ||
 		(input.slug != null && typeof input.slug !== "string")) return routeError("BAD_REQUEST", "collection and contentId are required; slug must be a string.");
 	try {
-		const [settings, rules] = await Promise.all([loadSettings(ctx), getEntryRestrictions(ctx, input.collection, input.contentId, input.slug as string | null | undefined)]);
+		const settings = await loadSettings(ctx);
+		const { rules, freeByDefault } = await forAgents(ctx, settings, await getEntryRestrictions(ctx, input.collection, input.contentId, input.slug as string | null | undefined));
 		const canonicalUrl = await ctx.content?.getPublicUrl?.(input.collection, input.contentId).catch(() => null) ?? null;
-		return { canonicalUrl, rules: rules.map(({ policy, agentPrice }) => ({ policy, agentPrice })), agents: settings.agents, price: highestAgentPrice(rules) };
+		return { canonicalUrl, rules: rules.map(({ policy, agentPrice }) => ({ policy, agentPrice })), agents: { ...settings.agents, freeByDefault }, price: highestAgentPrice(rules) };
 	} catch {
 		return routeError("UNAVAILABLE", "Unable to resolve agent context.");
 	}

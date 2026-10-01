@@ -41,6 +41,17 @@ describe("standard plugin companion seams", () => {
 		expect(Object.keys(plugin.routes!).filter((name) => route(name).permission)).toEqual(["editor/paid-access"]);
 		expect(route("editor/paid-access").permission).toBe("content:publish_any");
 	});
+	it("gives agents nothing free while humans are delegated", async () => {
+		const ctx = context({ agentsMode: "paid", agentsNetwork: "eip155:84532", agentsFreeByDefault: true, humansMode: "delegate" }, "public", "agents-pay");
+		const result = await invoke(route("agent/context").handler, { ...ctx, input: { collection: "posts", contentId: "1", slug: "post" } }) as { rules: Array<{ policy: string }>; agents: { freeByDefault: boolean } };
+		expect(result.rules.map(rule => rule.policy)).not.toContain("public");
+		expect(result.agents.freeByDefault).toBe(false);
+		// The same holds when the legacy plugin is merely detected, whatever mode is configured.
+		const detected = context({ agentsMode: "paid", agentsNetwork: "eip155:84532", agentsFreeByDefault: true }, "public");
+		const kv = { get: async (key: string) => key === "state:legacyPluginPresent" };
+		const seen = await invoke(route("agent/context").handler, { ...detected, kv, input: { collection: "posts", contentId: "1", slug: "post" } }) as typeof result;
+		expect(seen.rules).toEqual([]); expect(seen.agents.freeByDefault).toBe(false);
+	});
 	it("returns private context including unioned rules and the highest sale price", async () => {
 		const ctx = context({ agentsMode: "paid", agentsNetwork: "eip155:84532" }, "agents-pay", "members-only");
 		await expect(invoke(route("agent/context").handler, { ...ctx, input: { collection: "posts", contentId: "1", slug: "post" } })).resolves.toEqual({

@@ -10,9 +10,10 @@ const agents = { mode: "paid", rail: "origin-x402", network: "eip155:84532", pay
 const content = [{ _type: "block", style: "normal", children: [{ _type: "span", text: "SENTINEL_BODY", marks: [] }] }];
 function setup(rules: unknown[] = []) {
 	const handler = vi.fn(async (_id: string, _method: string, path: string, _request: Request) => ({ success: true, data: path === "agent/context" ? { agents, rules, canonicalUrl: "https://site.test/blog/slug/" } : { ok: true } }));
+	const detectLegacy = vi.fn(async () => false);
 	const enforce = vi.fn(async () => new Response("payment", { status: 402, headers: { "PAYMENT-REQUIRED": "challenge" } }));
-	const context = { params: { collection: "posts", slug: "slug" }, request: new Request("https://site.test/agents/posts/slug.md"), locals: { emdash: { handlePluginApiRoute: handler, handlePublicPluginApiRoute: handler }, x402: { enforce } } } as unknown as APIContext;
-	return { context, handler, enforce };
+	const context = { params: { collection: "posts", slug: "slug" }, request: new Request("https://site.test/agents/posts/slug.md"), locals: { emdash: { handlePluginApiRoute: handler, handlePublicPluginApiRoute: handler }, x402: { enforce }, paidAccess: { detectLegacy } } } as unknown as APIContext;
+	return { context, handler, enforce, detectLegacy };
 }
 beforeEach(() => { vi.mocked(getEmDashEntry).mockResolvedValue({ entry: { id: "slug", data: { id: "db-1", status: "published", title: "Title", content } } }); });
 it("404s unknown collections, missing entries and preview drafts without a body", async () => {
@@ -34,6 +35,11 @@ it("503s context and entry lookup failures without content", async () => {
 	expect(response.status).toBe(503); expect(await response.text()).toBe(""); expect(response.headers.get("Cache-Control")).toBe("private, no-store");
 	vi.mocked(getEmDashEntry).mockRejectedValueOnce(new Error("offline"));
 	expect((await GET(context)).status).toBe(503);
+});
+it("503s without content when the legacy plugin check fails, before asking for rules", async () => {
+	const { context, handler, detectLegacy } = setup([{ policy: "public" }]); detectLegacy.mockRejectedValueOnce(new Error("probe failed"));
+	const response = await GET(context);
+	expect(response.status).toBe(503); expect(await response.text()).toBe(""); expect(handler).not.toHaveBeenCalled();
 });
 it("serves free Markdown and canonical URL, HEAD omits body", async () => {
 	const { context, handler, enforce } = setup([{ policy: "public" }]);

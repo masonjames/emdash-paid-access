@@ -68,6 +68,12 @@ function settingPath(value: unknown, fallback: string, trailingSlash: boolean): 
 	return trailingSlash ? `${path}/` : path;
 }
 
+// While Restrict With Stripe is active, in any mode, this plugin can't see who it or the
+// theme locks out, so agents never get a post free.
+export async function agentsNeverFree(ctx: PluginContext, settings: PaidAccessSettings): Promise<boolean> {
+	return settings.humans.mode === "delegate" || await ctx.kv?.get("state:legacyPluginPresent") === true;
+}
+
 export async function loadSettings(ctx: PluginContext): Promise<PaidAccessSettings> {
 	const stripeSecretKey = (await ctx.settings.get("stripeSecretKey")) as string | null;
 	const storedPlans = await ctx.settings.get("humansPlans");
