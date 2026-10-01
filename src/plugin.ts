@@ -70,7 +70,8 @@ const plugin: SandboxedPlugin = {
 	},
 	routes: {
 		admin: { methods: ["POST"], handler: adminHandler },
-		"editor/paid-access": { methods: ["POST"], handler: editorHandler },
+		// Whoever may publish any post may set its rule; every other private route keeps the plugins:manage default.
+		"editor/paid-access": { methods: ["POST"], permission: "content:publish_any", handler: editorHandler },
 		"coexistence/report": { methods: ["POST"], handler: coexistenceReport },
 		checkout: { methods: ["POST"], public: true, handler: humansStripeOnly(checkoutHandler) },
 		"checkout/complete": { methods: ["POST"], public: true, handler: humansStripeOnly(checkoutCompleteHandler) },

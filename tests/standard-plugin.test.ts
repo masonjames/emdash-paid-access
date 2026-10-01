@@ -37,6 +37,9 @@ describe("standard plugin companion seams", () => {
 			expect(route(name)).toMatchObject({ methods: ["POST"], public: true });
 		}
 		for (const name of ["agent/context", "receipts/record", "admin/settings", "admin", "editor/paid-access", "coexistence/report"]) expect(route(name).public).not.toBe(true);
+		// Only the editor panel is open to non-admins.
+		expect(Object.keys(plugin.routes!).filter((name) => route(name).permission)).toEqual(["editor/paid-access"]);
+		expect(route("editor/paid-access").permission).toBe("content:publish_any");
 	});
 	it("returns private context including unioned rules and the highest sale price", async () => {
 		const ctx = context({ agentsMode: "paid", agentsNetwork: "eip155:84532" }, "agents-pay", "members-only");
