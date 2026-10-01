@@ -81,16 +81,16 @@
     "pages": [
       {
         "path": "/settings",
-        "label": "Settings",
+        "label": "Paid Access Settings",
         "icon": "settings"
       },
       {
         "path": "/rules",
-        "label": "Rules"
+        "label": "Paid Access Rules"
       },
       {
         "path": "/receipts",
-        "label": "Receipts"
+        "label": "Paid Access Receipts"
       }
     ],
     "widgets": [
