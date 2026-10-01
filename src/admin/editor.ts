@@ -5,7 +5,7 @@ import type { Block, BlockResponse, FormField } from "@emdash-cms/blocks";
 import type { PluginContext } from "emdash/plugin";
 import { restrictionsHandler } from "../handlers/restrictions.js";
 import { loadSettings } from "../handlers/settings.js";
-import { getEntryRestrictions, normalizeAgentPrice, normalizeContentRestriction } from "../restrictions.js";
+import { getEntryRestrictions, normalizeAgentPrice, normalizeContentRestriction, priceFromInput } from "../restrictions.js";
 import type { AccessPolicy, ContentRestrictionRecord, PaidAccessSettings, RouteContext } from "../types.js";
 import { AGENTS_PAY_WARNING, banner, confirmButton, context, failure, interaction, request, str, summary } from "./shared.js";
 
@@ -86,7 +86,7 @@ export async function editorPanel(route: RouteContext, ctx: PluginContext): Prom
 		const shown: State = pending === "pay" ? { ...current, agents: "pay" } : current;
 		const price = stored.own && SALE.includes(stored.own.policy) ? stored.own.agentPrice : null;
 		const value = str(i.value);
-		const typed = value.trim();
+		const typed = (kind === "price" ? str(priceFromInput(value)) : value).trim();
 		// Everything that needs no write is settled before the action claims the panel,
 		// so an unchanged blur or a refused value can't refuse the next click.
 		const valid = kind === "people" ? settings.humans.mode !== "delegate" && (value === "anyone" || value === "members")

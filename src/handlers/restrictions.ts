@@ -5,7 +5,7 @@
 import type { PluginContext } from "emdash/plugin";
 import type { RouteContext } from "../types.js";
 
-import { normalizeAgentPrice, normalizeContentRestriction, normalizeTaxonomyRestriction } from "../restrictions.js";
+import { normalizeAgentPrice, normalizeContentRestriction, normalizeTaxonomyRestriction, priceFromInput } from "../restrictions.js";
 import type { AccessPolicy, ContentRestrictionRecord } from "../types.js";
 import { isRecord, parsePlanSlugs, normalizeStringArray, nowIso } from "../utils.js";
 import { loadSettings } from "./settings.js";
@@ -103,7 +103,7 @@ export async function restrictionsHandler(routeCtx: RouteContext, ctx: PluginCon
 		const policy = typeof merged.policy === "string"
 			? merged.policy as AccessPolicy
 			: requiredPlanSlugs.length > 0 ? "members" : "public";
-		const agentPrice = normalizeAgentPrice(merged.agentPrice);
+		const agentPrice = normalizeAgentPrice(priceFromInput(merged.agentPrice));
 		if (merged.agentPrice != null && merged.agentPrice !== "" && !agentPrice) {
 			return { ok: false, error: "agentPrice must be a dollar amount with at most six decimals." };
 		}

@@ -24,6 +24,11 @@ export function normalizeAgentPrice(value: unknown): string | null {
 	return priceMicros(normalized) > 0n ? normalized : null;
 }
 
+// People type prices with or without the dollar sign; stored prices always carry it.
+export function priceFromInput(value: unknown): unknown {
+	return typeof value === "string" && /^\s*\d/.test(value) ? `$${value.trim()}` : value;
+}
+
 export function priceMicros(price: string): bigint {
 	const [whole, fraction = ""] = price.slice(1).split(".");
 	return BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, "0"));

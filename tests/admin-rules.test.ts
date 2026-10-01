@@ -137,6 +137,11 @@ describe("editor panel", () => {
 		expect((await act(ctx, panel, "price", "bad")).toast?.message).toBe("Enter a price like $0.05, with at most six decimals.");
 		expect((await act(ctx, panel, "agents", "free")).toast?.type).toBe("success"); expect(await stored(ctx)).toMatchObject({ policy: "public" });
 	});
+	it("accepts a price typed without the dollar sign", async () => {
+		const ctx = fixture(paid); await ctx.storage.restrictions.put("posts:1", rule);
+		expect((await act(ctx, await load(ctx), "price", "0.03")).toast?.type).toBe("success");
+		expect(await stored(ctx)).toMatchObject({ agentPrice: "$0.03" });
+	});
 	it("refuses a leftover action even when the newer one saved nothing", async () => {
 		const ctx = fixture(paid);
 		const pay = await act(ctx, await load(ctx), "agents", "pay");
