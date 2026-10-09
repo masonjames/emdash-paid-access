@@ -94,6 +94,26 @@ it("middleware sets request locals and reads the cookie without eagerly calling 
 	expect(next).toHaveBeenCalledOnce(); expect(privateCall).not.toHaveBeenCalled(); expect(publicCall).not.toHaveBeenCalled();
 });
 
+it("prevents shared caching before a streamed HTML body is read", async () => {
+	const { onRequest } = await import("../src/astro/middleware.js");
+	const { locals } = setup();
+	const context = { locals, request, cookies: { get: () => undefined } };
+	let finish: (() => void) | undefined;
+	const body = new ReadableStream<Uint8Array>({ start(controller) { finish = () => { controller.enqueue(new TextEncoder().encode("protected body")); controller.close(); }; } });
+	const response = await onRequest(context as unknown as Parameters<typeof onRequest>[0], async () => new Response(body, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=3600" } }));
+	expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+	finish!();
+	expect(await response.text()).toBe("protected body");
+});
+
+it("preserves cache policy for non-HTML responses", async () => {
+	const { onRequest } = await import("../src/astro/middleware.js");
+	const { locals } = setup();
+	const context = { locals, request, cookies: { get: () => undefined } };
+	const response = await onRequest(context as unknown as Parameters<typeof onRequest>[0], async () => new Response("{}", { headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=60" } }));
+	expect(response.headers.get("Cache-Control")).toBe("public, max-age=60");
+});
+
 it("calls private routes through the server runtime when locals only carry the public dispatcher", async () => {
 	// EmDash's anonymous fast path (every AI agent) exposes only handlePublicPluginApiRoute.
 	runtimeCall.mockClear();

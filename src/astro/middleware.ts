@@ -5,7 +5,13 @@ import { defineMiddleware } from "astro:middleware";
 import options from "virtual:paid-access/config";
 import { createPaidAccess } from "./runtime.js";
 
-export const onRequest = defineMiddleware((context, next) => {
+export const onRequest = defineMiddleware(async (context, next) => {
 	context.locals.paidAccess = createPaidAccess(context.locals, context.request, context.cookies.get("phb_session")?.value ?? null, options);
-	return next();
+	const response = await next();
+	// Child components cannot reliably set the page response headers during
+	// streaming. Protect HTML at the response boundary, before any body is sent.
+	if (response.headers.get("Content-Type")?.toLowerCase().includes("text/html")) {
+		response.headers.set("Cache-Control", "private, no-store");
+	}
+	return response;
 });
