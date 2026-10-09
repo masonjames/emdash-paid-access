@@ -113,7 +113,7 @@ the original Git history; use a Git checkout when preparing a contribution.
 ## Release channels
 
 Public source, npm, and the EmDash registry are separate delivery steps. The
-source is public; npm `0.1.0-beta.1` awaits release acceptance, and the EmDash
+source and npm `0.1.0-beta.1` are public, and the EmDash
 registry remains unpublished. A Node site can use the npm core descriptor and
 companion without waiting for registry publication.
 

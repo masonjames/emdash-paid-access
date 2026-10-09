@@ -101,7 +101,8 @@
     "patches",
     "docs/README.md",
     "docs/guides",
-    "docs/reference"
+    "docs/reference",
+    "docs/releases/0.1.0-beta.1.md"
   ],
   "packageManager": "pnpm@12.10.1",
   "description": "Stripe memberships and x402 paid reads for EmDash, with server-rendered access control and an Astro companion.",

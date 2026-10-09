@@ -1,9 +1,9 @@
 # Changelog
 
-## 0.1.0-beta.1 — npm beta candidate
+## 0.1.0-beta.1 — 2026-10-09
 
 First standalone Paid Access beta, derived from Restrict With Stripe for EmDash
-by Stranger Studios. npm publication is pending release acceptance. The EmDash
+by Stranger Studios, released on npm with the `beta` tag. The EmDash
 registry remains unpublished and is a separate distribution step.
 
 ### Added
@@ -30,6 +30,9 @@ registry remains unpublished and is a separate distribution step.
   an explicit opt-in.
 - Repeatable release checks validate built exports, bundled files, and sandbox
   behavior before publication.
+- Response middleware applies private/no-store to HTML, including streamed
+  component responses. Non-HTML caching stays unchanged. Public HTML also
+  bypasses shared caches in this beta.
 
 ### Compatibility
 

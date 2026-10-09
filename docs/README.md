@@ -1,10 +1,10 @@
 # Paid Access documentation
 
 Paid Access combines a standard-format EmDash core with an Astro companion.
-The source beta is available now. npm publication of `0.1.0-beta.1` is pending
-release acceptance; the EmDash registry remains unpublished. The installation
-guide includes the exact npm command to use after publication and a source-build
-path for evaluation today.
+The public npm beta is `0.1.0-beta.1`; the EmDash registry remains unpublished.
+The installation guide covers npm and building from source. The
+[live demo](https://masonjames.com/blog/paid-access-demo/) uses Stripe memberships
+for people and Base Sepolia test USDC for agents.
 
 ## Set up a site
 

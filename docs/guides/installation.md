@@ -8,12 +8,11 @@ email provider, or deployment adapter.
 
 ## 1. Choose a package
 
-The npm beta is prepared as `0.1.0-beta.1`; publication is pending release
-acceptance. The EmDash registry remains unpublished. An npm installation on
+The public npm beta is `0.1.0-beta.1`. The EmDash registry remains unpublished. An npm installation on
 Node includes the core descriptor and companion and does not need a registry
 listing.
 
-After npm publication, install the exact beta in your site:
+Install the exact beta in your site:
 
 ```sh
 pnpm add emdash-paid-access@0.1.0-beta.1 @emdash-cms/x402@1.2.0
@@ -26,7 +25,7 @@ The installed runtime supports Node 22.12+.
 ### Build from source
 
 Use Node 22.18+ to build the source and the pnpm version declared in `package.json`.
-Use this path before npm publication or when evaluating a source change:
+Use this path when evaluating or modifying the source:
 
 ```sh
 git clone https://github.com/masonjames/emdash-paid-access.git
