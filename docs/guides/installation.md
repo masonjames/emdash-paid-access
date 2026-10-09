@@ -127,6 +127,12 @@ require `plugins:manage`.
 
 ## 5. Verify the host boundary
 
+With the companion enabled, the beta sets `Cache-Control: private, no-store` on
+HTML responses, including public pages. Shared HTML caching is unavailable in
+this configuration. Configure your proxy/CDN to honor those headers and clear
+any HTML cached before enabling the integration. Include the extra origin
+traffic in your hosting plan.
+
 For a locked post, a signed-out page should show the paywall without the paid
 body in HTML or embedded data. An entitled reader should see the body. For an
 agent-paid post, an unpaid agent GET should return 402 without the body.
