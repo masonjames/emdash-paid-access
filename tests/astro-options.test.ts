@@ -18,3 +18,10 @@ it.each([true, false])("registers x402, virtual config, post middleware and rout
 	const config = updateConfig.mock.calls[0][0]; expect(config.integrations[0].name).toBe("@emdash-cms/x402");
 	expect(config.vite.plugins[0].load("\0virtual:paid-access/config")).toContain('"accountPath":"/account"');
 });
+
+it.each(["not-a-url", "http://facilitator.test", "https://user:pass@facilitator.test", "https://facilitator.test?key=secret", "https://facilitator.test#fragment"])("rejects unsafe facilitator URL %s", facilitatorUrl => {
+ expect(() => resolveOptions({ facilitatorUrl })).toThrow("facilitatorUrl");
+});
+it("normalizes the facilitator URL", () => {
+ expect(resolveOptions({ facilitatorUrl: "https://x402.org/facilitator/" }).facilitatorUrl).toBe("https://x402.org/facilitator");
+});

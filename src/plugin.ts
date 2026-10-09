@@ -69,10 +69,10 @@ const plugin: SandboxedPlugin = {
 		},
 	},
 	routes: {
-		admin: { methods: ["POST"], handler: adminHandler },
-		// Whoever may publish any post may set its rule; every other private route keeps the plugins:manage default.
+		admin: { methods: ["POST"], permission: "plugins:manage", handler: adminHandler },
+		// Whoever may publish any post may set its rule; every other private route explicitly requires plugins:manage.
 		"editor/paid-access": { methods: ["POST"], permission: "content:publish_any", handler: editorHandler },
-		"coexistence/report": { methods: ["POST"], handler: coexistenceReport },
+		"coexistence/report": { methods: ["POST"], permission: "plugins:manage", handler: coexistenceReport },
 		checkout: { methods: ["POST"], public: true, handler: humansStripeOnly(checkoutHandler) },
 		"checkout/complete": { methods: ["POST"], public: true, handler: humansStripeOnly(checkoutCompleteHandler) },
 		portal: { methods: ["POST"], public: true, handler: humansStripeOnly(portalHandler) },
@@ -81,19 +81,19 @@ const plugin: SandboxedPlugin = {
 		entitlement: { methods: ["GET"], public: true, handler: agentsOnly(entitlementHandler) },
 		offers: { methods: ["GET"], public: true, handler: agentsOnly(offersHandler) },
 		pass: { methods: ["POST"], public: true, handler: agentsOnly(unavailableAgentFeature) },
-		"agent-tokens": { methods: ["POST"], handler: humansStripeOnly(unavailableAgentFeature) },
-		"admin/products": { methods: ["GET"], handler: humansStripeOnly(productsHandler) },
-		"admin/restrictions": { methods: ["GET", "POST", "DELETE"], handler: anyModule(restrictionsHandler) },
-		"admin/receipts": { methods: ["GET"], handler: agentsOnly(receiptsHandler) },
-		"admin/settings": { methods: ["GET", "POST"], handler: settingsHandler },
+		"agent-tokens": { methods: ["POST"], permission: "plugins:manage", handler: humansStripeOnly(unavailableAgentFeature) },
+		"admin/products": { methods: ["GET"], permission: "plugins:manage", handler: humansStripeOnly(productsHandler) },
+		"admin/restrictions": { methods: ["GET", "POST", "DELETE"], permission: "plugins:manage", handler: anyModule(restrictionsHandler) },
+		"admin/receipts": { methods: ["GET"], permission: "plugins:manage", handler: agentsOnly(receiptsHandler) },
+		"admin/settings": { methods: ["GET", "POST"], permission: "plugins:manage", handler: settingsHandler },
 		"auth/send-link": { methods: ["POST"], public: true, handler: humansStripeOnly(sendLinkHandler) },
 		"auth/verify": { methods: ["POST"], public: true, handler: humansStripeOnly(verifyHandler) },
 		"auth/session": { methods: ["POST"], public: true, handler: humansStripeOnly(sessionHandler) },
 		"auth/logout": { methods: ["POST"], public: true, handler: humansStripeOnly(logoutHandler) },
 		// Phase 3c: runtime.handlePluginApiRoute("paid-access", "POST", path, request)
 		// invokes private routes without a user; HTTP dispatcher authentication remains required.
-		"agent/context": { methods: ["POST"], handler: agentContextHandler },
-		"receipts/record": { methods: ["POST"], handler: recordReceiptHandler },
+		"agent/context": { methods: ["POST"], permission: "plugins:manage", handler: agentContextHandler },
+		"receipts/record": { methods: ["POST"], permission: "plugins:manage", handler: recordReceiptHandler },
 	},
 };
 

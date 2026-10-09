@@ -25,7 +25,7 @@ export async function adminHandler(route: RouteContext, ctx: PluginContext): Pro
 		if (i.type === "form_submit" || i.type === "block_action") {
 			if (i.action.startsWith("settings:") || i.action.startsWith("plans:")) return await settingsInteraction(route, ctx);
 			if (i.action.startsWith("rules:")) return await rulesInteraction(route, ctx);
-			if (i.type === "block_action" && i.action === "receipts:more") return await receiptsPage(ctx, str(i.value));
+			if (i.type === "block_action" && ["receipts:live", "receipts:test", "receipts:more", "receipts:test:more"].includes(i.action)) return await receiptsPage(ctx, i.action.endsWith(":more") ? str(i.value) : undefined, i.action.startsWith("receipts:test"));
 		}
 		return failure("This action is unavailable. Reload Paid Access and try again.");
 	} catch { return failure(); }

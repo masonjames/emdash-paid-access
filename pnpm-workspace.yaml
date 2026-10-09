@@ -4,3 +4,16 @@
 allowBuilds:
   esbuild: true
   sharp: true
+  workerd: true
+
+# Align EmDash's drifting extensions with its installed TipTap core/pm.
+# plugin-cli needs TypeScript 6; tsdown 0.22 supports both TS 5 and TS 6.
+overrides:
+  'emdash>@tiptap/extension-subscript': 3.26.0
+  'emdash>@tiptap/extension-superscript': 3.26.0
+  '@emdash-cms/admin>@tiptap/extension-subscript': 3.26.0
+  '@emdash-cms/admin>@tiptap/extension-superscript': 3.26.0
+  '@emdash-cms/plugin-cli>tsdown': 0.22.0
+
+patchedDependencies:
+  '@emdash-cms/plugin-cli@0.13.3': patches/@emdash-cms__plugin-cli@0.13.3.patch

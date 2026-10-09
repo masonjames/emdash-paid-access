@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 Mason James. SPDX-License-Identifier: GPL-2.0-or-later -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Paid Access</title>
+  <desc id="desc">A cream page and green open doorway on a dark ink square.</desc>
+  <rect width="256" height="256" rx="52" fill="#172823"/>
+  <path d="M76 44h90c9 0 16 7 16 16v136c0 9-7 16-16 16H76c-9 0-16-7-16-16V60c0-9 7-16 16-16Z" fill="#F5F2E9"/>
+  <path d="M84 75h72v10H84zm0 25h52v10H84z" fill="#172823"/>
+  <path d="M122 129h60v83h-60z" fill="#172823"/>
+  <path d="m154 115 44 16v82l-44-15z" fill="#C3F06B"/>
+  <path d="M138 164H89m0 0 13-13m-13 13 13 13" fill="none" stroke="#172823" stroke-width="10" stroke-linecap="square" stroke-linejoin="miter"/>
+  <circle cx="166" cy="164" r="4" fill="#172823"/>
+</svg>

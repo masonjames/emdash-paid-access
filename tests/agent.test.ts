@@ -190,3 +190,16 @@ describe("agent Markdown response", () => {
 		}));
 	});
 });
+
+it("passes Base requests to the configured production facilitator without granting content", async () => {
+	const enforce = vi.fn(async () => new Response(null, { status: 402 }));
+	const response = await serveAgentEntry({
+		request: new Request("https://example.test/paid.md"), entry, rules: [rule("agents-pay")],
+		settings: { ...settings, network: "eip155:8453" }, facilitatorUrl: "https://facilitator.example.test",
+		enforcer: { enforce } as unknown as X402Enforcer, receipts: { put: vi.fn() },
+	});
+	expect(response.status).toBe(402);
+	expect(await response.text()).toBe("");
+	expect(enforce).toHaveBeenCalledOnce();
+	expect(enforce.mock.calls[0]).toContainEqual(expect.objectContaining({ network: "eip155:8453" }));
+});

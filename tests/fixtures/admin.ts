@@ -29,8 +29,9 @@ export function store(seed: Record<string, unknown> = {}) {
 function collection() {
 	const s = store();
 	return { ...s, put: s.set,
-		query: async ({ limit = 200, cursor = "0", orderBy }: { limit?: number; cursor?: string; orderBy?: Record<string, string> } = {}) => {
+		query: async ({ limit = 200, cursor = "0", orderBy, where }: { limit?: number; cursor?: string; orderBy?: Record<string, string>; where?: Record<string, string> } = {}) => {
 		let rows = [...s.data].map(([id, data]) => ({ id, data }));
+		if (where) rows = rows.filter(row => Object.entries(where).every(([key, value]) => (row.data as Record<string, unknown>)[key] === value));
 		if (orderBy) { const [key, direction] = Object.entries(orderBy)[0]; rows = rows.sort((a, b) => String((a.data as Record<string, unknown>)[key]).localeCompare(String((b.data as Record<string, unknown>)[key])) * (direction === "desc" ? -1 : 1)); }
 		const offset = Number(cursor); const items = rows.slice(offset, offset + limit); const more = offset + limit < rows.length;
 		return { items, cursor: more ? String(offset + limit) : undefined, hasMore: more };

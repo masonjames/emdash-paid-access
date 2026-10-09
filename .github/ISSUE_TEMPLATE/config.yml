@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security report
+    url: https://github.com/masonjames/emdash-paid-access/blob/main/SECURITY.md
+    about: Report vulnerabilities privately using the security contact.
+  - name: Setup and paid support
+    url: https://masonjames.com/plugins/paid-access/
+    about: Ask about integration, migration, hosting, and support services.

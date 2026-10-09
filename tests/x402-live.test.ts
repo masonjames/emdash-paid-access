@@ -13,7 +13,7 @@ import type { AgentSettings, ContentRestrictionRecord } from "../src/types.js";
 const payTo = process.env.PHB_TEST_PAY_TO;
 const privateKey = process.env.PHB_TEST_PRIVATE_KEY;
 
-describe.skipIf(!payTo || !privateKey)("live Base Sepolia x402", () => {
+describe.skipIf(process.env.PAID_ACCESS_LIVE_TEST !== "1" || !payTo || !privateKey)("live Base Sepolia x402", () => {
 	it("pays test USDC, receives Markdown and stores a receipt", async () => {
 		const context = { locals: {} as { x402?: X402Enforcer } };
 		const { onRequest } = await import("@emdash-cms/x402/middleware");

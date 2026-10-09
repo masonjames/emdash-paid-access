@@ -88,3 +88,13 @@ it("builds the canonical from the collection URL pattern when the plugin can't",
 	const withSite = { ...context, site: new URL("https://site.test") } as APIContext;
 	expect(await (await GET(withSite)).text()).toContain('canonical: "https://site.test/blog/slug/"');
 });
+
+it("fails closed before charging when Base uses the default test facilitator", async () => {
+ const { context, handler, enforce } = setup([{ policy: "agents-pay", agentPrice: "$0.01" }]);
+ handler.mockResolvedValueOnce({ success: true, data: { agents: { ...agents, network: "eip155:8453" }, rules: [{ policy: "agents-pay", agentPrice: "$0.01" }], canonicalUrl: null } } as never);
+ const result = await GET(context);
+ expect(result.status).toBe(503);
+ expect(result.headers.get("Cache-Control")).toBe("private, no-store");
+ expect(await result.text()).toBe("");
+ expect(enforce).not.toHaveBeenCalled();
+});

@@ -14,7 +14,7 @@
     "url": "https://masonjames.com/.well-known/security.txt"
   },
   "name": "Paid Access",
-  "description": "Sell your posts to people with Stripe memberships and to AI agents with x402 USDC payments. Use either or both.",
+  "description": "Stripe memberships and x402 paid reads for EmDash. Free GPL beta; requires the npm Astro companion and theme integration.",
   "keywords": [
     "paywall",
     "memberships",
@@ -23,9 +23,19 @@
     "ai-agents"
   ],
   "repo": "https://github.com/masonjames/emdash-paid-access",
+  "sections": {
+    "description": "Paid Access connects Stripe memberships for people and x402 paid reads for AI agents. Use either module or both; each starts off. Configure entry and taxonomy rules, manage plans, and review agent payment receipts in EmDash. The complete plugin is free under GPL-2.0-or-later, with no license gating and no cut of your payments. Setup, migration, hosting, and support are separate services from Mason James. Based on Restrict With Stripe for EmDash by Stranger Studios.",
+    "installation": "Beta preparation: not published yet. Requires EmDash 1.2 and an Astro site with server rendering. Registry installation provides the core admin and storage; you must also install the emdash-paid-access npm package, add its paidAccessAstro integration, and gate protected bodies with PaidContent. Register the core once: a registry installation replaces the npm descriptor in plugins, but does not replace the Astro companion. Follow the matching source version's README for configuration and content/cache checks. Initial target is Node; real sandbox-plus-companion and staging acceptance are release gates.",
+    "faq": "**Does this replace Stripe or charge a platform fee?** No. Creators receive their Stripe memberships and agent payments in their own accounts/wallets; provider fees may apply.\n\n**Which agent payments work in this beta?** Origin x402. Gateway verification, subscriber tokens, and passes are not available. Development uses Base Sepolia; mainnet needs an explicitly compatible facilitator.\n\n**Can I keep Restrict With Stripe?** Use delegation during migration and retain the existing member UI. Automatic customer/session migration and free-member entitlements are not included.",
+    "security": { "file": "./SECURITY.md" }
+  },
   "release": {
     "requires": {
-      "env:emdash": ">=1.0.1"
+      "env:emdash": "^1.2.0"
+    },
+    "artifacts": {
+      "icon": { "file": "./icon.png" },
+      "banner": { "file": "./assets/listing/banner.png", "lang": "en" }
     }
   },
   "capabilities": [
@@ -71,6 +81,7 @@
     "receipts": {
       "indexes": [
         "entryId",
+        "network",
         "payer",
         "transaction",
         "createdAt"

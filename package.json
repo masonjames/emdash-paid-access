@@ -1,6 +1,6 @@
 {
   "name": "emdash-paid-access",
-  "version": "0.1.0",
+  "version": "0.1.0-beta.1",
   "license": "GPL-2.0-or-later",
   "copyright": "Copyright 2026 Stranger Studios; modified by Mason James 2026-09-23",
   "type": "module",
@@ -9,7 +9,11 @@
     "typecheck": "tsc --noEmit",
     "build": "emdash-plugin build && tsdown",
     "validate": "emdash-plugin validate",
-    "bundle": "emdash-plugin bundle"
+    "bundle": "emdash-plugin bundle",
+    "test:sandbox": "vitest run --config vitest.sandbox.config.ts",
+    "release:check": "pnpm peers check && pnpm typecheck && pnpm build && pnpm test && pnpm test:sandbox && pnpm validate && pnpm bundle && node scripts/check-package.mjs",
+    "prepack": "pnpm build && node scripts/prepare-package.mjs",
+    "prepublishOnly": "pnpm release:check"
   },
   "main": "dist/index.mjs",
   "exports": {
@@ -52,29 +56,87 @@
     "./components/*": "./src/components/*"
   },
   "peerDependencies": {
-    "emdash": ">=1.0.1",
-    "astro": ">=6",
-    "@emdash-cms/x402": "^1.0.1"
+    "emdash": "^1.2.0",
+    "astro": "^6.1.3 || ^7.3.5",
+    "@emdash-cms/x402": "^1.2.0"
   },
   "devDependencies": {
-    "@emdash-cms/blocks": "1.0.1",
-    "@emdash-cms/plugin-cli": "0.13.1",
-    "@emdash-cms/x402": "1.0.1",
+    "@emdash-cms/blocks": "1.2.0",
+    "@emdash-cms/plugin-cli": "0.13.3",
+    "@emdash-cms/x402": "1.2.0",
     "@x402/core": "2.27.0",
     "@x402/evm": "2.27.0",
     "@x402/fetch": "2.27.0",
-    "astro": "6.1.3",
-    "emdash": "1.0.1",
-    "tsdown": "0.20.3",
-    "typescript": "^5.9.0",
+    "astro": "7.3.5",
+    "emdash": "1.2.0",
+    "tsdown": "0.22.0",
+    "typescript": "5.9.3",
     "viem": "2.56.8",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.9",
+    "@emdash-cms/plugin-test": "0.2.8",
+    "vite": "^8.0.0",
+    "zod": "4.5.4"
   },
   "files": [
     "dist",
+    "!dist/*.tar.gz",
     "emdash-plugin.jsonc",
     "NOTICE.md",
     "LICENSE",
-    "src/components"
-  ]
+    "README.md",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "SUPPORT.md",
+    "CONTRIBUTING.md",
+    "src",
+    "tests",
+    "tsconfig.json",
+    "tsdown.config.ts",
+    "vitest.config.ts",
+    "icon.png",
+    "assets/listing",
+    "pnpm-workspace.yaml",
+    "vitest.sandbox.config.ts",
+    "scripts",
+    "patches",
+    "docs/README.md",
+    "docs/guides",
+    "docs/reference"
+  ],
+  "packageManager": "pnpm@12.10.1",
+  "description": "Stripe memberships and x402 paid reads for EmDash, with server-rendered access control and an Astro companion.",
+  "author": {
+    "name": "Mason James",
+    "url": "https://masonjames.com"
+  },
+  "contributors": [
+    {
+      "name": "Stranger Studios",
+      "url": "https://www.strangerstudios.com"
+    }
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/masonjames/emdash-paid-access.git"
+  },
+  "homepage": "https://masonjames.com/plugins/paid-access/",
+  "bugs": {
+    "url": "https://github.com/masonjames/emdash-paid-access/issues"
+  },
+  "keywords": [
+    "emdash",
+    "astro",
+    "paywall",
+    "memberships",
+    "stripe",
+    "x402",
+    "ai-agents"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "tag": "beta"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
 }

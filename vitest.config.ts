@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { getViteConfig } from "astro/config";
 
 export default getViteConfig({
+	test: { include: ["tests/*.test.ts"] },
 	server: { host: "127.0.0.1", deps: { inline: ["@emdash-cms/x402"] } },
 	ssr: { noExternal: ["@emdash-cms/x402"] },
 	resolve: {

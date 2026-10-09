@@ -1,0 +1,53 @@
+name: Bug report
+description: Report a reproducible problem with Paid Access.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For access-control bypasses or other security issues, email hi@masonjames.com instead of filing a public report.
+        Use synthetic content. Do not include keys, cookies, magic links, payment signatures, subscriber data, or production databases.
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Paid Access, EmDash, Astro, Node, and package manager versions.
+      placeholder: Paid Access 0.1.0-beta.1, EmDash 1.2.0, Astro 7.3.5, Node 22, pnpm 12
+    validations:
+      required: true
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Core installation
+      options:
+        - Local npm-format archive with descriptor
+        - Source checkout
+        - Registry core plus npm companion
+        - Other (describe below)
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include enabled modules, policy, host/adapter, and minimal synthetic steps.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and observed behavior
+      description: Include the affected route and HTTP status when relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Checks and sanitized evidence
+      description: Which local or host checks passed? Include minimal sanitized logs or a public reproduction.
+  - type: checkboxes
+    id: redacted
+    attributes:
+      label: Before submitting
+      options:
+        - label: This report contains no credentials, session tokens, payment signatures, or personal customer data.
+          required: true

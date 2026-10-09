@@ -37,7 +37,7 @@ export const GET: APIRoute = async ({ params, locals, request, site }) => {
 		const canonicalUrl = await collectionUrl(params.collection, params.slug, site) ?? result.data.canonicalUrl ?? fallback.href;
 		return await serveAgentEntry({ request,
 			entry: { id, collectionSlug: params.collection, slug: params.slug, title: entry.data.title ?? "", content: entry.data.content ?? [], canonicalUrl },
-			rules: result.data.rules, settings: result.data.agents, enforcer: locals.x402,
+			rules: result.data.rules, settings: result.data.agents, enforcer: locals.x402, facilitatorUrl: options.facilitatorUrl,
 			receipts: { async put(_id, receipt) { const stored = await callPlugin(locals, "receipts/record", receipt, request); if (!stored.ok) throw new Error(`Receipt storage failed: ${stored.code}`); } },
 			log: console, offersUrl: new URL(`${options.agentRoutePrefix}/offers.json`, site ?? request.url).href,
 		});

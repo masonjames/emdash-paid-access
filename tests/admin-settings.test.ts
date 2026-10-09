@@ -83,3 +83,18 @@ it("renders a previously enabled Stripe mode after a legacy runtime report", asy
 	const ctx = fixture({ humansMode: "stripe" }); await ctx.kv.set("state:legacyPluginPresent", true);
 	expect(JSON.stringify(await admin(ctx, page("/settings")))).toContain("Use migration mode");
 });
+
+it("rejects Gateway even with a trust value, while letting saved configurations recover", async () => {
+ const ctx = fixture({ ...paid, agentsRail: "gateway", agentsEdgeTrust: "trusted-header" });
+ const screen = await admin(ctx, page("/settings"));
+ expect(JSON.stringify(screen)).toContain("Paid reads are blocked");
+ const rail = flatten(screen.blocks).filter(b => b.type === "form").flatMap(b => b.fields).find(f => f.action_id === "rail");
+ expect(rail).toMatchObject({ options: [{ value: "origin-x402" }] });
+ const before = [...ctx.settings.data];
+ const rejected = await admin(ctx, submit("settings:advanced:save", { agent_route_prefix: "/agents", account_path: "/account/", rail: "gateway", edge_trust: "trusted-header" }));
+ expect(rejected.toast?.message).toContain("unavailable in this beta");
+ expect([...ctx.settings.data]).toEqual(before);
+ const recovered = await admin(ctx, submit("settings:advanced:save", { agent_route_prefix: "/agents", account_path: "/account/", rail: "origin-x402" }));
+ expect(recovered.toast?.type).toBe("success");
+ expect(ctx.settings.data.get("agentsRail")).toBe("origin-x402");
+});

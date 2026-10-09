@@ -117,8 +117,8 @@ function validateAgents(value: unknown): string | null {
 	if (value.mode === "paid" && (!/^0x[0-9a-fA-F]{40}$/.test(value.payTo.trim()) || !value.network)) {
 		return "Paid agent access requires an EVM payTo address and network.";
 	}
-	if (value.rail === "gateway" && (!value.edgeTrust.trim() || value.edgeTrust.trim() === "none")) {
-		return "Gateway rail requires a configured edgeTrust method.";
+	if (value.rail === "gateway") {
+		return "Cloudflare Monetization Gateway is unavailable in this beta. Choose this site (origin x402).";
 	}
 	return null;
 }

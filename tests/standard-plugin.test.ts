@@ -38,7 +38,9 @@ describe("standard plugin companion seams", () => {
 		}
 		for (const name of ["agent/context", "receipts/record", "admin/settings", "admin", "editor/paid-access", "coexistence/report"]) expect(route(name).public).not.toBe(true);
 		// Only the editor panel is open to non-admins.
-		expect(Object.keys(plugin.routes!).filter((name) => route(name).permission)).toEqual(["editor/paid-access"]);
+		for (const name of Object.keys(plugin.routes!)) {
+			if (!route(name).public && name !== "editor/paid-access") expect(route(name).permission).toBe("plugins:manage");
+		}
 		expect(route("editor/paid-access").permission).toBe("content:publish_any");
 	});
 	it("gives agents nothing free while humans are delegated", async () => {

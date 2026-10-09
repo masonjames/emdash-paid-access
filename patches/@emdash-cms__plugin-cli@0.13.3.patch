@@ -1,0 +1,128 @@
+diff --git a/dist/api.mjs b/dist/api.mjs
+index f051fd7af105a62fc0293c9f3513fa1d3d23bb12..9895fc3adb19babd11682cbb3026fe18d44646fe 100644
+--- a/dist/api.mjs
++++ b/dist/api.mjs
+@@ -2540,14 +2540,16 @@ async function probeAndAssemble(ctx) {
+ 			outDir: probeOutDir,
+ 			dts: false,
+ 			platform: "neutral",
+-			external: [],
+-			noExternal: [
+-				"emdash/plugin",
+-				"zod",
+-				"@emdash-cms/blocks",
+-				"@emdash-cms/blocks/server"
+-			],
+-			inlineOnly: false,
++			deps: {
++				neverBundle: [],
++				alwaysBundle: [
++					"emdash/plugin",
++					"zod",
++					"@emdash-cms/blocks",
++					"@emdash-cms/blocks/server"
++				],
++				onlyBundle: false
++			},
+ 			treeshake: true
+ 		});
+ 	} catch (error) {
+@@ -2705,14 +2707,16 @@ async function buildRuntime(ctx) {
+ 			outDir: runtimeOutDir,
+ 			dts: false,
+ 			platform: "neutral",
+-			external: [],
+-			noExternal: [
+-				"emdash/plugin",
+-				"zod",
+-				"@emdash-cms/blocks",
+-				"@emdash-cms/blocks/server"
+-			],
+-			inlineOnly: false,
++			deps: {
++				neverBundle: [],
++				alwaysBundle: [
++					"emdash/plugin",
++					"zod",
++					"@emdash-cms/blocks",
++					"@emdash-cms/blocks/server"
++				],
++				onlyBundle: false
++			},
+ 			minify: true,
+ 			plugins: [runtimeSourcePlugin],
+ 			treeshake: true
+@@ -2726,8 +2730,7 @@ async function buildRuntime(ctx) {
+ 			clean: false,
+ 			dts: { emitDtsOnly: true },
+ 			platform: "neutral",
+-			external: ["emdash/plugin"],
+-			inlineOnly: false,
++			deps: { neverBundle: ["emdash/plugin"], onlyBundle: false },
+ 			treeshake: true
+ 		});
+ 	} catch (error) {
+diff --git a/dist/index.mjs b/dist/index.mjs
+index d911bbdce81efaadfe7f591505373f5d76e453e5..3b45fdee3220672366c831ab60f5bcd06bc09186 100755
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -2680,14 +2680,16 @@ async function probeAndAssemble(ctx) {
+ 			outDir: probeOutDir,
+ 			dts: false,
+ 			platform: "neutral",
+-			external: [],
+-			noExternal: [
+-				"emdash/plugin",
+-				"zod",
+-				"@emdash-cms/blocks",
+-				"@emdash-cms/blocks/server"
+-			],
+-			inlineOnly: false,
++			deps: {
++				neverBundle: [],
++				alwaysBundle: [
++					"emdash/plugin",
++					"zod",
++					"@emdash-cms/blocks",
++					"@emdash-cms/blocks/server"
++				],
++				onlyBundle: false
++			},
+ 			treeshake: true
+ 		});
+ 	} catch (error) {
+@@ -2845,14 +2847,16 @@ async function buildRuntime(ctx) {
+ 			outDir: runtimeOutDir,
+ 			dts: false,
+ 			platform: "neutral",
+-			external: [],
+-			noExternal: [
+-				"emdash/plugin",
+-				"zod",
+-				"@emdash-cms/blocks",
+-				"@emdash-cms/blocks/server"
+-			],
+-			inlineOnly: false,
++			deps: {
++				neverBundle: [],
++				alwaysBundle: [
++					"emdash/plugin",
++					"zod",
++					"@emdash-cms/blocks",
++					"@emdash-cms/blocks/server"
++				],
++				onlyBundle: false
++			},
+ 			minify: true,
+ 			plugins: [runtimeSourcePlugin],
+ 			treeshake: true
+@@ -2866,8 +2870,7 @@ async function buildRuntime(ctx) {
+ 			clean: false,
+ 			dts: { emitDtsOnly: true },
+ 			platform: "neutral",
+-			external: ["emdash/plugin"],
+-			inlineOnly: false,
++			deps: { neverBundle: ["emdash/plugin"], onlyBundle: false },
+ 			treeshake: true
+ 		});
+ 	} catch (error) {

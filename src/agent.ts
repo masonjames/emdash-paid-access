@@ -4,6 +4,7 @@
 import type { EnforceResult, X402Enforcer } from "@emdash-cms/x402";
 import { portableTextToMarkdown, type PortableTextBlock } from "emdash/client";
 
+import { TEST_FACILITATOR_URL } from "./astro/options.js";
 import { CONTENT_SIGNAL, resolveAccess } from "./resolver.js";
 import { highestAgentPrice } from "./restrictions.js";
 import type {
@@ -81,6 +82,7 @@ export async function serveAgentEntry(input: {
 	rules: Rule[];
 	settings: AgentSettings;
 	enforcer?: X402Enforcer;
+	facilitatorUrl?: string;
 	receipts: ReceiptStore;
 	log?: { error(message: string, data?: unknown): void; warn(message: string, data?: unknown): void };
 	/** Absolute URL of the offers list, linked when this entry isn't for sale. */
@@ -97,6 +99,10 @@ export async function serveAgentEntry(input: {
 	if (!price || !input.settings.payTo || !input.settings.network) return empty(503);
 	if (input.settings.rail === "gateway") return empty(401);
 	if (!input.enforcer) return empty(503);
+	if (input.settings.network === "eip155:8453" && (input.facilitatorUrl ?? TEST_FACILITATOR_URL).replace(/\/+$/, "") === TEST_FACILITATOR_URL) {
+		input.log?.error("Base payments require a production facilitator in paidAccessAstro({ facilitatorUrl }) and a site rebuild.");
+		return empty(503);
+	}
 	let body: string;
 	try {
 		body = markdown(input.entry, price);

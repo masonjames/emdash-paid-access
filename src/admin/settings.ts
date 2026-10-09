@@ -57,7 +57,8 @@ export async function settingsPage(route: RouteContext, ctx: PluginContext, edit
 					{ ...textField("agents_pay_to", "Payout wallet", s.agents.payTo, "0x…"), condition: paid },
 					...(s.humans.mode === "delegate" ? [] : [{ type: "toggle" as const, action_id: "agents_free_by_default", label: "Offer free Markdown for posts without a rule", initial_value: s.agents.freeByDefault, condition: paid }]),
 				]), ...(s.agents.mode === "paid" ? [
-					context("USDC goes straight to this address on Base. Use a wallet you control."),
+					context("USDC goes straight to this address on the selected network. Use a wallet you control."),
+					context("Base requires a production facilitator in the Astro companion configuration and a site rebuild. The default facilitator supports Base Sepolia test payments."),
 					s.humans.mode === "delegate"
 						? context("Agents only get posts that have a Paid Access rule, and never for free while Restrict With Stripe decides who can read.")
 						: context("Agents only get posts that have a Paid Access rule. Offering free Markdown for everything else is good for AI search, but leave it off if another plugin or your theme restricts some posts: agents would read those for free."),
@@ -66,10 +67,10 @@ export async function settingsPage(route: RouteContext, ctx: PluginContext, edit
 			] },
 			{ label: "Members", blocks: members },
 			{ label: "Advanced", blocks: [
+				...(s.agents.rail === "gateway" ? [banner("This site has a saved Gateway setting. Paid reads are blocked. Choose this site below and save to use origin x402.", "alert")] : []),
 				form("settings:advanced:save", "Save advanced settings", [textField("agent_route_prefix", "Agent route prefix", s.agentRoutePrefix), textField("account_path", "Account pages path", s.accountPath),
-					{ type: "radio", action_id: "rail", label: "Payment rail", initial_value: s.agents.rail, options: [{ value: "origin-x402", label: "This site (recommended)" }, { value: "gateway", label: "Cloudflare Monetization Gateway" }] },
-					{ ...textField("edge_trust", "Edge trust method", s.agents.edgeTrust), condition: { field: "rail", eq: "gateway" } },
-				]), context("The Gateway rail stays off until the edge trust method below is set."),
+					{ type: "radio", action_id: "rail", label: "Payment rail", ...(s.agents.rail === "origin-x402" ? { initial_value: s.agents.rail } : {}), options: [{ value: "origin-x402", label: "This site (origin x402)" }] },
+				]), context("Cloudflare Monetization Gateway is unavailable in this beta. Paid reads use this site with the Astro companion."),
 				...(s.stripeSecretKey ? [{ type: "actions" as const, elements: [{ ...confirmButton("settings:disconnect", "Disconnect", "Disconnect Stripe?", "Checkout and member checks stop until you add a key again. Existing members keep their Stripe subscriptions."), label: "Disconnect Stripe" }] }] : []),
 			] },
 		] },
