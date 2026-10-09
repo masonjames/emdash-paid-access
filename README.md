@@ -6,6 +6,7 @@ SPDX-License-Identifier: GPL-2.0-or-later
 
 # Paid Access for EmDash
 
+[![Release checks](https://github.com/masonjames/emdash-paid-access/actions/workflows/release-check.yml/badge.svg)](https://github.com/masonjames/emdash-paid-access/actions/workflows/release-check.yml)
 [![Status: source beta](https://img.shields.io/badge/status-source_beta-c3f06b?labelColor=172823)](CHANGELOG.md)
 [![EmDash 1.2](https://img.shields.io/badge/EmDash-1.2-172823)](https://github.com/emdash-cms/emdash)
 [![License: GPL-2.0-or-later](https://img.shields.io/badge/license-GPL--2.0--or--later-172823)](LICENSE)
