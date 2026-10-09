@@ -22,7 +22,7 @@ site, not just the paywall's appearance.
 
 | Surface | Application behavior | Host requirement |
 | --- | --- | --- |
-| Page using `PaidContent` | `Cache-Control: private, no-store` | Do not cache HTML that depends on a member session |
+| HTML with the companion enabled (including public pages) | `Cache-Control: private, no-store` | Do not cache HTML that depends on a member session |
 | `/agents/{collection}/{slug}.md` | Private/no-store, including denied responses | Bypass shared caches; do not replay a paid body to an unpaid request |
 | Successful account redirects | Private/no-store | Bypass `/account/*`; never cache sign-in/verification responses |
 | `/agents/offers.json` | `public, max-age=300` | Public metadata only; allow up to five minutes of offer staleness |
