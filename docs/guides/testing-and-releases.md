@@ -113,16 +113,51 @@ the original Git history; use a Git checkout when preparing a contribution.
 ## Release channels
 
 Public source, npm, and the EmDash registry are separate delivery steps. The
-current beta has public source; npm and registry publication are pending.
-Use one source version for both artifacts, keep the first npm release on the
-`beta` dist-tag, and publish the matching source tag with the binary artifacts.
+source is public; npm `0.1.0-beta.1` awaits release acceptance, and the EmDash
+registry remains unpublished. A Node site can use the npm core descriptor and
+companion without waiting for registry publication.
 
-Before a release, update the changelog and availability statements, verify the
-package/source contents and matching versions, and finish the relevant host
-acceptance checks. After publication, prove an external consumer can install it
-and that the registry actually approves and discovers it. A successful upload
-alone is not directory visibility. Keep credentials outside source and use
-provenance/trusted publishing when the chosen release workflow supports it.
+### Prepare the npm beta
+
+1. Finish and record the relevant host acceptance checks above. Update the
+   changelog and release evidence to describe observed results and beta limits.
+2. Finalize the source revision and run `pnpm release:check`. Review the packed
+   contents, preserve the archive's checksum, and test that exact artifact in a
+   fresh consumer. Keep `0.1.0-beta.1` consistent across source and artifacts.
+3. Authenticate the intended npm account with `pnpm login --registry
+   https://registry.npmjs.org`, then confirm it with `pnpm whoami --registry
+   https://registry.npmjs.org`. Keep credentials outside the repository.
+4. After acceptance, publish the reviewed archive with the `beta` dist-tag:
+
+```sh
+pnpm publish ./artifacts/emdash-paid-access-0.1.0-beta.1.tgz \
+  --registry https://registry.npmjs.org \
+  --tag beta --access public --publish-wait-timeout 600000
+```
+
+Run the release gate before publishing a prebuilt tarball; do not rely on the
+archive running the source checkout's `prepublishOnly` script. Direct npm
+publication requires account 2FA or an appropriately authorized granular token.
+Use trusted publishing and provenance when releasing through supported CI.
+See [npm authentication requirements](https://docs.npmjs.com/creating-and-publishing-unscoped-public-packages/)
+and [pnpm publishing options](https://pnpm.io/cli/publish).
+
+After upload, confirm the exact version and `beta` tag, verify the downloaded
+archive against the reviewed artifact, and install/build it in a clean consumer.
+The availability wait checks registry metadata and the tarball response; it
+does not verify package contents. If it times out after the upload was accepted,
+check the registry before retrying. Do not reuse a published version for changed
+bytes. Publish the matching source tag and update availability statements only
+when the package can actually be installed.
+
+### EmDash registry follows separately
+
+This npm release does not publish or approve an EmDash registry listing. Before
+offering that installation path, verify a real sandbox core with the matching
+npm companion on the intended host. Publish the sandbox archive through the
+EmDash CLI, then verify approval, public discovery, and a fresh installation.
+The registry core alone does not enforce paid content. Keep the listing explicit
+about the required companion and theme integration.
 
 The standard core remains GPL-2.0-or-later; make corresponding source available
 with a release. See [LICENSE](../../LICENSE) and [NOTICE](../../NOTICE.md).

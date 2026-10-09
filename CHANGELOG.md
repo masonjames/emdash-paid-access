@@ -1,9 +1,10 @@
 # Changelog
 
-## 0.1.0-beta.1 — Unreleased
+## 0.1.0-beta.1 — npm beta candidate
 
 First standalone Paid Access beta, derived from Restrict With Stripe for EmDash
-by Stranger Studios. No npm package or EmDash registry release has been published.
+by Stranger Studios. npm publication is pending release acceptance. The EmDash
+registry remains unpublished and is a separate distribution step.
 
 ### Added
 
@@ -16,6 +17,8 @@ by Stranger Studios. No npm package or EmDash registry release has been publishe
 - Origin x402 settlement and receipts, with Base Sepolia for development.
 - Delegated access checks while Restrict With Stripe remains installed.
 - Hybrid npm/standard-plugin packaging, attribution, and listing artwork.
+- A complete GPL plugin without license keys, paid feature tiers, or a transaction
+  percentage. Setup, migration, hosting, and support are separate services.
 
 ### Hardened
 
@@ -39,8 +42,9 @@ by Stranger Studios. No npm package or EmDash registry release has been publishe
 
 - No Gateway verification, subscriber agent tokens, passes, free-member entitlement,
   automated migration, or checkout trial configuration.
-- Initial target is Node; fresh-site, sandbox-plus-companion, staging-payment,
-  and production-canary acceptance are separate release gates.
+- Initial target is Node; a successful local build does not certify payment,
+  cache, or deployment acceptance. Registry core plus companion and
+  Cloudflare/Workers require separate host verification before being offered.
 - Themes, APIs, feeds, search, and caching require a protected-content audit.
 
 Earlier commits remain in Git history, including the original Restrict With

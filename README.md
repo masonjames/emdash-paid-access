@@ -7,7 +7,7 @@ SPDX-License-Identifier: GPL-2.0-or-later
 # Paid Access for EmDash
 
 [![Release checks](https://github.com/masonjames/emdash-paid-access/actions/workflows/release-check.yml/badge.svg)](https://github.com/masonjames/emdash-paid-access/actions/workflows/release-check.yml)
-[![Status: source beta](https://img.shields.io/badge/status-source_beta-c3f06b?labelColor=172823)](CHANGELOG.md)
+[![Status: beta candidate](https://img.shields.io/badge/status-beta_candidate-c3f06b?labelColor=172823)](CHANGELOG.md)
 [![EmDash 1.2](https://img.shields.io/badge/EmDash-1.2-172823)](https://github.com/emdash-cms/emdash)
 [![License: GPL-2.0-or-later](https://img.shields.io/badge/license-GPL--2.0--or--later-172823)](LICENSE)
 
@@ -35,8 +35,10 @@ separate [services from Mason James](https://masonjames.com/plugins/paid-access/
 
 ## Beta status
 
-`0.1.0-beta.1` is available as source. **npm and the EmDash plugin directory are
-not published yet.** Build a local package to evaluate it.
+`0.1.0-beta.1` is the first npm beta candidate. **npm publication is pending
+release acceptance; the EmDash plugin directory remains unpublished.** The
+source is available now. The [installation guide](docs/guides/installation.md)
+covers both the source build and the npm path to use after publication.
 
 The beta targets **Node 22.12+**, **EmDash 1.2**, **x402 1.2**, and
 **Astro `^6.1.3 || ^7.3.5`**. Both payment modules start off. Local tests and
@@ -50,22 +52,16 @@ core plus companion require their own host acceptance testing.
 
 ## Quick start
 
-Start with an existing server-rendered EmDash 1.2 site. Building this repository
-requires Node **22.18+**; the installed runtime package supports Node **22.12+**.
-From a separate source checkout, build the evaluation package:
+Start with an existing server-rendered EmDash 1.2 site on Node **22.12+**.
+After npm publication, install the exact beta and its x402 peer:
 
 ```sh
-git clone https://github.com/masonjames/emdash-paid-access.git
-cd emdash-paid-access
-pnpm install --frozen-lockfile
-pnpm release:check
+pnpm add emdash-paid-access@0.1.0-beta.1 @emdash-cms/x402@1.2.0
 ```
 
-In your site, install the resulting artifact and its x402 peer:
-
-```sh
-pnpm add /path/to/emdash-paid-access/artifacts/emdash-paid-access-0.1.0-beta.1.tgz @emdash-cms/x402@1.2.0
-```
+Until then, use the [source-build instructions](docs/guides/installation.md#build-from-source),
+which require Node **22.18+**. An npm install supplies both the core descriptor
+and Astro companion; it does not depend on an EmDash directory listing.
 
 Add the descriptor and companion to your existing Astro configuration:
 

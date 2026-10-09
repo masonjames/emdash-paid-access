@@ -1,8 +1,10 @@
 # Paid Access documentation
 
 Paid Access combines a standard-format EmDash core with an Astro companion.
-Start with a local build of the source beta; npm and registry publication are
-still pending.
+The source beta is available now. npm publication of `0.1.0-beta.1` is pending
+release acceptance; the EmDash registry remains unpublished. The installation
+guide includes the exact npm command to use after publication and a source-build
+path for evaluation today.
 
 ## Set up a site
 

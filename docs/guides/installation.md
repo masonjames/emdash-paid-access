@@ -6,10 +6,27 @@ This guide starts with a working **server-rendered EmDash 1.2 site on Node**.
 Paid Access does not create the host site or configure its database, storage,
 email provider, or deployment adapter.
 
-## 1. Build and install the source beta
+## 1. Choose a package
+
+The npm beta is prepared as `0.1.0-beta.1`; publication is pending release
+acceptance. The EmDash registry remains unpublished. An npm installation on
+Node includes the core descriptor and companion and does not need a registry
+listing.
+
+After npm publication, install the exact beta in your site:
+
+```sh
+pnpm add emdash-paid-access@0.1.0-beta.1 @emdash-cms/x402@1.2.0
+```
+
+The site must satisfy these peer requirements: `emdash ^1.2.0`,
+`astro ^6.1.3 || ^7.3.5`, and `@emdash-cms/x402 ^1.2.0`.
+The installed runtime supports Node 22.12+.
+
+### Build from source
 
 Use Node 22.18+ to build the source and the pnpm version declared in `package.json`.
-The installed runtime package supports Node 22.12+.
+Use this path before npm publication or when evaluating a source change:
 
 ```sh
 git clone https://github.com/masonjames/emdash-paid-access.git
@@ -24,10 +41,9 @@ The command writes a checked npm archive under `artifacts/`. In your site:
 pnpm add /path/to/emdash-paid-access/artifacts/emdash-paid-access-0.1.0-beta.1.tgz @emdash-cms/x402@1.2.0
 ```
 
-The site must already satisfy the package's EmDash and Astro peer requirements:
-`emdash ^1.2.0`, `astro ^6.1.3 || ^7.3.5`. There is no public npm install or
-registry listing to use yet. Pin the artifact you evaluated instead of assuming
-a future package with the same name is equivalent.
+Record the source commit and archive checksum you evaluated. A source build
+and a future npm upload with the same version are only equivalent when their
+contents match.
 
 ## 2. Register the core and companion
 
