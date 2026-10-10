@@ -5,7 +5,7 @@
 import type { PluginContext } from "emdash/plugin";
 import type { RouteContext } from "../types.js";
 
-import { normalizeHumanPlans } from "../plans.js";
+import { normalizeHumanPlans, planSegment } from "../plans.js";
 import type {
 	AgentMode,
 	AgentRail,
@@ -123,7 +123,7 @@ function validateAgents(value: unknown): string | null {
 	return null;
 }
 
-function validateHumans(value: unknown, legacyPluginPresent: boolean): string | null {
+function validateHumans(value: unknown, legacyPluginPresent: boolean, storedSlugs: ReadonlySet<string>): string | null {
 	if (!isRecord(value)) return "humans must be an object.";
 	if (!HUMAN_MODES.includes(value.mode as HumanMode)) return "Invalid humans.mode.";
 	if (value.mode === "stripe" && legacyPluginPresent) {
@@ -131,7 +131,14 @@ function validateHumans(value: unknown, legacyPluginPresent: boolean): string | 
 	}
 	const plans = normalizeHumanPlans(value.plans);
 	if (!plans) return "humans.plans must be a valid plan catalog with unique slugs.";
+	// New or renamed slugs must form valid audience segments. Stored ones keep saving and
+	// loading; segments() leaves them out at runtime.
+	if (plans.some(plan => !storedSlugs.has(plan.slug) && !planSegment(plan.slug))) return "Plan IDs may use only lowercase letters, numbers, hyphens, underscores and colons, up to 59 characters.";
 	return null;
+}
+
+async function storedPlanSlugs(ctx: PluginContext): Promise<Set<string>> {
+	return new Set((normalizeHumanPlans(await ctx.settings.get("humansPlans")) ?? []).map(plan => plan.slug));
 }
 
 export async function settingsHandler(routeCtx: RouteContext, ctx: PluginContext) {
@@ -146,7 +153,7 @@ export async function settingsHandler(routeCtx: RouteContext, ctx: PluginContext
 
 	const body = isRecord(routeCtx.input) ? routeCtx.input : {};
 	const error = body.agents !== undefined ? validateAgents(body.agents) : null;
-	const humanError = body.humans !== undefined ? validateHumans(body.humans, body.legacyPluginPresent === true || await ctx.kv?.get("state:legacyPluginPresent") === true) : null;
+	const humanError = body.humans !== undefined ? validateHumans(body.humans, body.legacyPluginPresent === true || await ctx.kv?.get("state:legacyPluginPresent") === true, await storedPlanSlugs(ctx)) : null;
 	if (error || humanError) return { ok: false, error: error || humanError };
 	for (const field of ["stripeSecretKey", "stripePublishableKey", "stripeAccountId", "stripeEnvironment"] as const) {
 		if (body[field] !== undefined && typeof body[field] !== "string") return { ok: false, error: `${field} must be a string.` };

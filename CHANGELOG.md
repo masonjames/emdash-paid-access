@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Added
+
+- `Astro.locals.paidAccess.segments({ entry? })` returns sorted audience
+  segments for visual builders: `member` (signed in, not a paid entitlement),
+  `plan:<slug>` for each owned plan, and `entitled` when the entry may render.
+  It costs one entitlement check per request and returns `[]` when anything
+  can't be verified.
+- A private `entitlements` core route, called only by the companion, that
+  reports the human mode and the reader's owned plans. It writes nothing to
+  storage, apart from clearing an expired session.
+
+### Changed
+
+- Settings now refuse a new or renamed plan ID that can't form a
+  `plan:<slug>` segment. A plan saved earlier with such an ID still loads,
+  doesn't block saving other member settings, and can still be removed or
+  renamed. `segments()` leaves it out.
+
 ### Fixed
 
 - In stripe mode, an access check that requires an unknown or removed plan now

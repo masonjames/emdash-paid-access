@@ -201,4 +201,52 @@ export class StripeClient {
 
 		return false;
 	}
+
+	/**
+	 * Every product the customer owns: the same two requests and first-100 page
+	 * limits as customerHasProduct, without stopping at a match. A list without
+	 * a data array is malformed, not empty, and throws.
+	 */
+	async customerProducts(customerId: string): Promise<Set<string>> {
+		const products = new Set<string>();
+		if (!customerId) {
+			return products;
+		}
+
+		const subscriptions = await this.request<StripeSubscriptionList>(
+			`/subscriptions?customer=${encodeURIComponent(customerId)}&status=all&limit=100`,
+		);
+		if (!Array.isArray(subscriptions.data)) {
+			throw new Error("Stripe returned a malformed subscription list.");
+		}
+		for (const subscription of subscriptions.data) {
+			if (subscription.status !== "active" && subscription.status !== "trialing") {
+				continue;
+			}
+			for (const item of subscription.items?.data || []) {
+				if (typeof item.price?.product === "string" && item.price.product) {
+					products.add(item.price.product);
+				}
+			}
+		}
+
+		const invoices = await this.request<StripeInvoiceList>(
+			`/invoices?customer=${encodeURIComponent(customerId)}&status=paid&limit=100`,
+		);
+		if (!Array.isArray(invoices.data)) {
+			throw new Error("Stripe returned a malformed invoice list.");
+		}
+		for (const invoice of invoices.data) {
+			if (invoice.subscription || invoice.metadata?.phbIgnore) {
+				continue;
+			}
+			for (const line of invoice.lines?.data || []) {
+				if (typeof line.price?.product === "string" && line.price.product) {
+					products.add(line.price.product);
+				}
+			}
+		}
+
+		return products;
+	}
 }

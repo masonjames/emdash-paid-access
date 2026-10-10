@@ -77,12 +77,43 @@ The companion adds `Astro.locals.paidAccess` per request:
 | `access({ collection, id, slug, requiredPlanSlugs? })` | Returns a human access decision, memoized within the request |
 | `session()` | Returns `{ authenticated, email }` for a Paid Access member session |
 | `plans()` | Public plan labels, empty when unavailable or delegation suppresses them |
+| `segments({ entry? })` | Returns `Promise<string[]>`: sorted audience segments for visual builders, memoized within the request |
 | `options` | Resolved companion options |
 
 For a custom renderer, require `decision.hasAccess === true` **and no error**.
 Use the exported `canRenderBody` helper from `emdash-paid-access/astro/runtime`
 instead of inferring access from `authenticated` or an EmDash staff role.
 Preserve the response's private/no-store header in a custom integration.
+
+### Segments
+
+`segments()` returns a plain list that a builder's audience rules can match.
+The vocabulary is closed:
+
+- `member`: the reader is signed in with a verified email. It isn't a paid
+  entitlement, because anyone can sign in with a magic link.
+- `plan:<slug>`: the reader owns the Stripe product of that configured plan.
+  A plan ID that doesn't fit `^[a-z0-9][a-z0-9:_-]{0,63}$` as `plan:<slug>` is
+  left out, and Settings refuses a new one.
+- `entitled`: only when you pass `entry`, the object `access()` takes, and
+  only when `canRenderBody(await access(entry))` is true. An unrestricted
+  entry counts.
+
+| Human mode | `member` | `plan:<slug>` | `entitled` |
+| --- | --- | --- | --- |
+| `stripe` | A valid Paid Access session | Each configured plan whose product the member owns | From `access(entry)` |
+| `delegate` | The legacy plugin's session | Never | From the delegated `access(entry)` |
+| `off` | Never | Never | Only for unrestricted entries |
+
+Segments never contain staff roles, emails or tokens, and never read
+`Astro.locals.user`. Each request makes one entitlement check, however often
+you call `segments()`, and `entitled` reuses the memoized `access()` decision.
+When anything can't be verified, including the entry's access decision, the
+result is `[]`; `segments()` doesn't throw. Each call returns its own array.
+It sets no headers: the middleware already marks HTML private and
+no-store. A non-HTML route that varies on segments must send
+`Cache-Control: private, no-store` itself, and never write segments into HTML
+or JSON.
 
 ## Public companion routes
 

@@ -3,9 +3,9 @@
 
 import type {} from "emdash/locals";
 import type {} from "@emdash-cms/x402/locals";
-import { ABSENT_TTL_MS, failClosedHumanDecision, legacyAbsentSince, probeLegacyPlugin, resolveHumanMode, unionAccessDecisions, type PublicPluginRouteHandler } from "../coexistence.js";
+import { ABSENT_TTL_MS, failClosedHumanDecision, legacyAbsentSince, legacySession, probeLegacyPlugin, resolveHumanMode, unionAccessDecisions, type PublicPluginRouteHandler } from "../coexistence.js";
 import type { AccessDecision, HumanMode, MemberSessionState } from "../types.js";
-import type { HumanPlan } from "../plans.js";
+import { planSegment, type HumanPlan } from "../plans.js";
 import { isRecord } from "../utils.js";
 import type { PaidAccessOptions } from "./options.js";
 
@@ -53,6 +53,13 @@ function validDecision(value: unknown): value is HumanDecision {
 		&& Array.isArray(value.requiredProductIds) && value.requiredProductIds.every(v => typeof v === "string");
 }
 export function canRenderBody(decision: AccessDecision): boolean { return decision.hasAccess === true && !decision.error; }
+type Entitlements = { humanMode: HumanMode; authenticated: boolean; planSlugs: string[] };
+function validEntitlements(value: unknown): value is Entitlements {
+	return isRecord(value) && value.ok === true && typeof value.humanMode === "string" && ["off", "stripe", "delegate"].includes(value.humanMode)
+		&& typeof value.authenticated === "boolean"
+		&& Array.isArray(value.planSlugs) && value.planSlugs.every(slug => typeof slug === "string");
+}
+const accessKey = (input: AccessInput) => JSON.stringify([input.collection, input.id, input.slug, input.requiredPlanSlugs ?? []]);
 
 let reported: Promise<boolean> | undefined;
 let reportedAbsentAt = 0;
@@ -94,14 +101,50 @@ export function createPaidAccess(locals: PluginLocals, request: Request, session
 			return { ...ours, ...unionAccessDecisions({ ...ours, hasAccess: !ours.restricted || granted }, legacy.data) };
 		} catch { return failClosedHumanDecision(); }
 	}
+	function memoizedAccess(input: AccessInput): Promise<HumanDecision> {
+		const key = accessKey(input);
+		if (!memo.has(key)) memo.set(key, access(input));
+		return memo.get(key)!;
+	}
+	// One entitlements call per request, however many segments() calls there are. Rejects on any doubt.
+	let readerSegments: Promise<string[]> | undefined;
+	async function readReaderSegments(): Promise<string[]> {
+		const present = await probe();
+		const result = await callPlugin(locals, "entitlements", { sessionToken }, request);
+		if (!result.ok || !validEntitlements(result.data)) throw new Error("Entitlements unavailable");
+		const { humanMode, authenticated, planSlugs } = result.data;
+		const mode = resolveHumanMode(humanMode, present).mode;
+		if (mode === "delegate") return await legacySession((id, method, path, req) => locals.emdash!.handlePublicPluginApiRoute(id, method, path, req), request, options.legacyPluginId) ? ["member"] : [];
+		if (mode !== "stripe" || !authenticated) return [];
+		return ["member", ...planSlugs.map(planSegment).filter((segment): segment is string => segment !== null)];
+	}
+	const segmentMemo = new Map<string, Promise<string[]>>();
+	async function segments(entry?: AccessInput): Promise<string[]> {
+		try {
+			const [reader, decision] = await Promise.all([readerSegments ??= readReaderSegments(), entry ? memoizedAccess(entry) : undefined]);
+			// An entry decision that couldn't be verified fails the whole answer closed.
+			if (decision?.error) return [];
+			return [...new Set([...reader, ...(decision && canRenderBody(decision) ? ["entitled"] : [])])].sort();
+		} catch { return []; }
+	}
 	return {
 		options, sessionToken,
 		/** Tell the core whether the legacy plugin is active. Throws when that can't be established. */
 		detectLegacy: probe,
-		access(input: AccessInput) {
-			const key = JSON.stringify([input.collection, input.id, input.slug, input.requiredPlanSlugs ?? []]);
-			if (!memo.has(key)) memo.set(key, access(input));
-			return memo.get(key)!;
+		access: memoizedAccess,
+		/**
+		 * Audience segments for visual builders: `member` (signed in, not a paid entitlement),
+		 * `plan:<slug>` for each owned plan, and `entitled` when `entry` may render. Sorted,
+		 * memoized per entry, and `[]` whenever anything can't be verified. Never throws, and
+		 * each call gets its own array.
+		 */
+		segments(input?: { entry?: AccessInput }): Promise<string[]> {
+			try {
+				const entry = input?.entry;
+				const key = entry ? accessKey(entry) : "";
+				if (!segmentMemo.has(key)) segmentMemo.set(key, segments(entry));
+				return segmentMemo.get(key)!.then(list => [...list]);
+			} catch { return Promise.resolve([]); }
 		},
 		async session(): Promise<MemberSessionState> {
 			try {

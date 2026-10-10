@@ -8,7 +8,7 @@ beforeEach(async () => { host = await createPluginRuntimeTestHost(); });
 afterEach(async () => { await host?.dispose(); });
 
 it("keeps payment context and receipt writes private through the production dispatcher", async () => {
- for (const name of ["agent/context", "receipts/record", "coexistence/report", "admin/settings"]) {
+ for (const name of ["agent/context", "receipts/record", "coexistence/report", "entitlements", "admin/settings"]) {
   const response = await host.actions.routes.request(name, { method: "POST", body: {} });
   expect(response.status).toBe(401);
  }

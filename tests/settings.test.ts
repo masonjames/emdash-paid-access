@@ -107,6 +107,34 @@ describe("loadSettings", () => {
 		await expect(invoke(settingsHandler, { ...base, request, input: { agents, stripeEnvironment: "invalid" } })).resolves.toMatchObject({ ok: false, error: "Invalid stripeEnvironment." });
 		expect(ctx.settingsStore.size).toBe(0);
 	});
+
+	it("rejects a plan slug outside the segment grammar on save but still loads a stored one", async () => {
+		const request = new Request("https://site.test/admin/settings", { method: "POST" });
+		const plan = (slug: string) => ({ slug, name: "Plus", stripeProductId: "prod_plus", grantsVisibility: [] });
+		for (const slug of ["Plus", "has space", "a".repeat(60)]) {
+			const ctx = { ...createCtx(), request, input: { humans: { mode: "stripe", plans: [...MASONJAMES_PLANS, plan(slug)] } } };
+			await expect(invoke(settingsHandler, ctx)).resolves.toEqual({ ok: false, error: "Plan IDs may use only lowercase letters, numbers, hyphens, underscores and colons, up to 59 characters." });
+			expect(ctx.settingsStore.size).toBe(0);
+		}
+		const longest = { ...createCtx(), request, input: { humans: { mode: "stripe", plans: [plan("a".repeat(59))] } } };
+		await expect(invoke(settingsHandler, longest)).resolves.toEqual({ ok: true });
+		// A catalog stored before the rule still loads; segments() leaves the nonconforming plan out.
+		const stored = await loadSettings(createCtx({ settingsSeed: { humansPlans: [...MASONJAMES_PLANS, plan("Legacy Plan")] } }));
+		expect(stored.humans.plans.map(({ slug }) => slug)).toEqual(["free", "default-product", "content-personall-ai", "Legacy Plan"]);
+	});
+
+	it("still saves member settings when a stored slug is nonconforming", async () => {
+		const request = new Request("https://site.test/admin/settings", { method: "POST" });
+		const legacy = { slug: "Legacy Plan", name: "Legacy", stripeProductId: "prod_legacy", grantsVisibility: [] };
+		const ctx = { ...createCtx({ settingsSeed: { humansMode: "off", humansPlans: [legacy, ...MASONJAMES_PLANS] } }), request };
+		await expect(invoke(settingsHandler, { ...ctx, input: { humans: { mode: "stripe", plans: [legacy, ...MASONJAMES_PLANS] } } })).resolves.toEqual({ ok: true });
+		expect(ctx.settingsStore.get("humansMode")).toBe("stripe");
+		// A new nonconforming plan is still refused; renaming or removing the stored one works.
+		await expect(invoke(settingsHandler, { ...ctx, input: { humans: { mode: "stripe", plans: [legacy, { ...legacy, slug: "Another Plan" }] } } })).resolves.toMatchObject({ ok: false });
+		await expect(invoke(settingsHandler, { ...ctx, input: { humans: { mode: "stripe", plans: [{ ...legacy, slug: "legacy-plan" }] } } })).resolves.toEqual({ ok: true });
+		expect(ctx.settingsStore.get("humansPlans")).toMatchObject([{ slug: "legacy-plan" }]);
+		await expect(invoke(settingsHandler, { ...ctx, input: { humans: { mode: "stripe", plans: [] } } })).resolves.toEqual({ ok: true });
+	});
 });
 
 

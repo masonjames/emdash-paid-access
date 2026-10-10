@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 import type { AccessDecision, HumanMode } from "./types.js";
+import { isRecord } from "./utils.js";
 
 export const LEGACY_PLUGIN_ID = "restrict-with-stripe";
 const LEGACY_SESSION_ROUTE = "auth/session";
@@ -46,6 +47,22 @@ export function probeLegacyPlugin(
 		throw error;
 	});
 	return cachedProbe;
+}
+
+/**
+ * Whether the legacy plugin has a signed-in reader, from its public GET session
+ * route with only the browser cookie forwarded. Only a well-formed answer counts:
+ * anything else, including `ok: false`, throws so the caller fails closed.
+ */
+export async function legacySession(handler: PublicPluginRouteHandler, request: Request, pluginId = LEGACY_PLUGIN_ID): Promise<boolean> {
+	const url = new URL(`/_emdash/api/plugins/${encodeURIComponent(pluginId)}/${LEGACY_SESSION_ROUTE}`, request.url);
+	const cookie = request.headers.get("cookie");
+	const result = await handler(pluginId, "GET", LEGACY_SESSION_ROUTE, new Request(url, { method: "GET", headers: cookie ? { cookie } : {} }));
+	const data = result.success && isRecord(result.data) && result.data.ok !== false ? result.data : null;
+	if (!data || typeof data.authenticated !== "boolean") throw new Error("Legacy membership session unavailable.");
+	if (!data.authenticated || data.email == null || data.email === "") return false;
+	if (typeof data.email !== "string") throw new Error("Legacy membership session is malformed.");
+	return true;
 }
 
 export async function probeLegacyPluginFromBrowser(fetcher: typeof fetch = fetch): Promise<boolean> {

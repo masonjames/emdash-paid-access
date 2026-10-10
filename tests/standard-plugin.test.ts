@@ -36,7 +36,7 @@ describe("standard plugin companion seams", () => {
 		for (const name of ["access", "auth/session", "auth/logout", "portal", "auth/verify", "checkout/complete", "checkout", "auth/send-link"]) {
 			expect(route(name)).toMatchObject({ methods: ["POST"], public: true });
 		}
-		for (const name of ["agent/context", "receipts/record", "admin/settings", "admin", "editor/paid-access", "coexistence/report"]) expect(route(name).public).not.toBe(true);
+		for (const name of ["agent/context", "receipts/record", "admin/settings", "admin", "editor/paid-access", "coexistence/report", "entitlements"]) expect(route(name).public).not.toBe(true);
 		// Only the editor panel is open to non-admins.
 		for (const name of Object.keys(plugin.routes!)) {
 			if (!route(name).public && name !== "editor/paid-access") expect(route(name).permission).toBe("plugins:manage");

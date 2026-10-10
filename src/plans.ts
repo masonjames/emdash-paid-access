@@ -59,6 +59,14 @@ export function normalizeHumanPlans(value: unknown): HumanPlan[] | null {
 	return plans;
 }
 
+/** The audience segment grammar shared with visual builders. */
+const SEGMENT_PATTERN = /^[a-z0-9][a-z0-9:_-]{0,63}$/;
+
+/** `plan:<slug>`, or null when the slug can't form a valid segment. Not part of normalizeHumanPlans, so stored catalogs keep loading. */
+export function planSegment(slug: string): string | null {
+	return slug && SEGMENT_PATTERN.test(`plan:${slug}`) ? `plan:${slug}` : null;
+}
+
 export function isPlanSlug(value: unknown, plans: HumanPlan[]): value is string {
 	return typeof value === "string" && plans.some((plan) => plan.slug === value);
 }

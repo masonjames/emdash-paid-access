@@ -11,6 +11,7 @@ import { accessHandler } from "./handlers/access.js";
 import { agentContextHandler, entitlementHandler, offersHandler, plansHandler, receiptsHandler, recordReceiptHandler, unavailableAgentFeature } from "./handlers/agents.js";
 import { logoutHandler, sendLinkHandler, sessionHandler, verifyHandler } from "./handlers/auth.js";
 import { checkoutCompleteHandler, checkoutHandler } from "./handlers/checkout.js";
+import { memberEntitlementsHandler } from "./handlers/entitlements.js";
 import { portalHandler } from "./handlers/portal.js";
 import { productsHandler } from "./handlers/products.js";
 import { restrictionsHandler } from "./handlers/restrictions.js";
@@ -73,6 +74,8 @@ const plugin: SandboxedPlugin = {
 		// Whoever may publish any post may set its rule; every other private route explicitly requires plugins:manage.
 		"editor/paid-access": { methods: ["POST"], permission: "content:publish_any", handler: editorHandler },
 		"coexistence/report": { methods: ["POST"], permission: "plugins:manage", handler: coexistenceReport },
+		// Answers in every human mode, so the companion can tell off from delegate.
+		entitlements: { methods: ["POST"], permission: "plugins:manage", handler: memberEntitlementsHandler },
 		checkout: { methods: ["POST"], public: true, handler: humansStripeOnly(checkoutHandler) },
 		"checkout/complete": { methods: ["POST"], public: true, handler: humansStripeOnly(checkoutCompleteHandler) },
 		portal: { methods: ["POST"], public: true, handler: humansStripeOnly(portalHandler) },
