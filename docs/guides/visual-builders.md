@@ -2,10 +2,12 @@
 
 [Documentation](../README.md) / Visual builders
 
-A visual builder decides on the server which elements, theme parts and pages
-a reader sees. Paid Access tells your host code who the reader is, in a form
-the builder's audience rules can match, without either package importing the
-other. Use this after [installing the companion](installation.md).
+A visual builder decides on the server which elements a reader sees, on its
+pages and inside its theme parts; whole pages are gated by Paid Access
+[page rules](#whole-page-gating). Paid Access tells your host code who the
+reader is, in a form the builder's audience rules can match, without either
+package importing the other. Use this after
+[installing the companion](installation.md).
 
 ## What a builder gets
 
@@ -130,8 +132,63 @@ and call to action under "Everyone except `entitled`".
 - When the entry's decision can't be verified, the whole list is `[]`, not just
   missing `entitled`, so the reader sees the teaser.
 
-If the template only needs to render the body as Portable Text, `PaidContent`
-already does this without a builder rule.
+With [EmVB](#emvb), the post template is a Single Post theme part from the
+same `resolveThemeParts` call as the header and footer, so pass
+`segments({ entry })` to that call on post routes. The header and footer then
+see `entitled` too, and when the entry can't be verified they get `[]` as
+well: a member sees the signed-out header on that request.
+
+> **Warning:** EmVB's Post Content element renders the post body itself and
+> never goes through `PaidContent`. On a restricted post, put Post Content
+> under "Only `entitled`" and pass `segments({ entry })`, or the body is in the
+> HTML for every reader. Otherwise, render restricted posts with `PaidContent`
+> instead of an EmVB Single Post template.
+
+### EmVB
+
+[EmVB](https://github.com/PerkyZZ999/EmVB) takes the list as
+`visitor.segments`, on its page resolver and on its theme-part resolver.
+Visitor segments are on EmVB's main branch.
+
+```astro
+---
+import { resolveEmVBPage, resolveThemeParts } from "@perkyzz/emvb/astro";
+
+const segments = await Astro.locals.paidAccess.segments();
+const emvb = await resolveEmVBPage(Astro, { visitor: { segments } });
+const theme = await resolveThemeParts(Astro, undefined, { visitor: { segments } });
+---
+```
+
+The second argument to `resolveThemeParts` is the theme context; `undefined`
+lets EmVB work it out from the request. One `visitor.segments` list applies to
+the header, footer, content template, popups and floats that call resolves. A
+popup or float whose elements are all hidden for a reader still appears for
+them, empty, so don't build one only from gated elements. Editors type the
+names under **Visitors → Segments** on an element.
+
+EmVB's segment names are lowercase letters, digits, `-` and `_`, up to 40
+characters. A name from the host that doesn't fit is dropped with no log, so
+today `plan:<slug>` doesn't reach EmVB and only `member` and `entitled`
+survive. [EmVB issue 6](https://github.com/PerkyZZ999/EmVB/issues/6) is the
+open request to allow `:` and 64 characters. Until it lands, a host that needs
+plan rules in EmVB can map the names itself, and editors type `plan-plus` under
+**Visitors → Segments**:
+
+```astro
+---
+const segments = (await Astro.locals.paidAccess.segments()).map((s) => s.replace(":", "-"));
+---
+```
+
+A plan ID longer than 35 characters still doesn't fit.
+
+The editor applies the same rule when the Segments field loses focus: a name
+that doesn't fit is removed. If that leaves an "Only" rule with nothing in it,
+it is saved as "Only everyone" and every reader sees the element. Before you
+publish, check that your names are still in the field. If they're gone, the
+panel says every visitor matches, and hovering the element's Visitors badge in
+**Layers** shows "Only everyone".
 
 ## Teasers need no rule
 
@@ -167,6 +224,10 @@ else that uses them.
 - **A site middleware that wraps Paid Access** must not set a cache hint after
   its own `next()` for these responses, because a later hint turns the route
   cache back on. See [cache rules](hosting-and-caching.md#cache-rules).
+- **EmVB** marks the response `private, no-store` itself when a page or theme
+  part it resolves has a Visitors rule. For any Visitors rule, including one
+  that only matches segments, it also sets its own first-party `emvb_seen`
+  cookie for a year, which a consent banner may need to list.
 
 Then run the [paid-then-unpaid checks](hosting-and-caching.md#prove-paid-then-unpaid-isolation)
 on a builder page as well as a post.

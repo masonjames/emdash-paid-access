@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- The visual builders guide documents EmVB's `visitor.segments` option, its
+  current name rule and the Post Content caveat.
+
 ## 0.1.0-beta.2 — 2026-10-10
 
 ### Added
