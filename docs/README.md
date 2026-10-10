@@ -17,6 +17,9 @@ for people and Base Sepolia test USDC for agents.
 Already running Restrict With Stripe? Start with
 [coexistence and migration](guides/migration.md) before changing member access.
 
+Building pages in a visual builder? See [visual builders](guides/visual-builders.md)
+for audience segments, teasers, page rules, and pricing.
+
 ## Reference
 
 | Document | Covers |

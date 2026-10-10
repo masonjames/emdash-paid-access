@@ -18,6 +18,10 @@
   are never sold to AI agents. The form only adds a rule, never overwrites one,
   and needs no new permission. A page rule takes effect only when the site's
   route for those pages checks Paid Access.
+- A [visual builders guide](docs/guides/visual-builders.md) covers the segment
+  vocabulary and its failure behavior by mode, host recipes for pages, theme
+  parts and post templates, teasers, whole-page rules, caching duties,
+  delegate-mode limits, and pricing without a plans mirror.
 
 ### Changed
 

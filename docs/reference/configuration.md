@@ -94,7 +94,7 @@ The vocabulary is closed:
   entitlement, because anyone can sign in with a magic link.
 - `plan:<slug>`: the reader owns the Stripe product of that configured plan.
   A plan ID that doesn't fit `^[a-z0-9][a-z0-9:_-]{0,63}$` as `plan:<slug>` is
-  left out, and Settings refuses a new one.
+  left out, and Settings refuses a new or renamed one.
 - `entitled`: only when you pass `entry`, the object `access()` takes, and
   only when `canRenderBody(await access(entry))` is true. An unrestricted
   entry counts.
@@ -111,9 +111,11 @@ you call `segments()`, and `entitled` reuses the memoized `access()` decision.
 When anything can't be verified, including the entry's access decision, the
 result is `[]`; `segments()` doesn't throw. Each call returns its own array.
 It sets no headers: the middleware already marks HTML private and
-no-store. A non-HTML route that varies on segments must send
-`Cache-Control: private, no-store` itself, and never write segments into HTML
-or JSON.
+no-store and keeps every no-store response out of Astro's route cache. A
+non-HTML route that varies on segments must send
+`Cache-Control: private, no-store` itself, and never write segments into HTML,
+JSON or a data attribute. Host recipes are in the
+[visual builders guide](../guides/visual-builders.md).
 
 ## Public companion routes
 

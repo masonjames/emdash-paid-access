@@ -121,6 +121,7 @@ agent token in this beta. [Policy precedence and exceptions →](docs/reference/
 | Offer paid Markdown | [x402 setup and receipts](docs/guides/x402-payments.md) |
 | Configure components, paths, or account handlers | [Configuration reference](docs/reference/configuration.md) |
 | Understand the security boundary | [Architecture and security](docs/reference/architecture-and-security.md) |
+| Gate elements or pages in a visual builder | [Visual builders](docs/guides/visual-builders.md) |
 | Migrate an existing membership site | [Coexistence and migration](docs/guides/migration.md) |
 | Diagnose a failed request | [Troubleshooting](docs/reference/troubleshooting.md) |
 | Contribute or prepare a release | [Testing and releases](docs/guides/testing-and-releases.md) |

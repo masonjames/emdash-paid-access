@@ -18,6 +18,10 @@ and price/plan/provider configuration is valid.
 | `members-only` | Paywall | Full body | 403; not for sale in this beta |
 | No rule | Full body unless another integration restricts it | Same | 404 by default |
 
+A caller can still restrict an entry with no rule through
+`access({ requiredPlanSlugs })`; in stripe mode, naming any unknown or removed
+plan denies it. See [Combining rules](#combining-rules).
+
 `agents-pay` does not protect the human HTML from scrapers. It provides a paid
 Markdown service for agents. A membership does not grant an agent a free read;
 subscriber tokens and passes are not implemented.
