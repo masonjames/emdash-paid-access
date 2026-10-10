@@ -42,7 +42,10 @@ For humans, matching members rules contribute their plan/product requirements.
 The combined product set is an **OR**: any matching configured product can grant
 access, not all selected plans at once. Entitlements may come from active/trialing
 subscriptions or eligible paid standalone invoices; see [Stripe behavior](../guides/stripe-memberships.md#what-grants-access).
-Unknown/empty plan mappings cannot create a free-member entitlement.
+Unknown/empty plan mappings cannot create a free-member entitlement. In stripe
+mode, `access({ requiredPlanSlugs })` that names any unknown or removed plan is
+denied, even when it also names a configured one. Off mode returns its usual
+error, and delegate mode forwards the slugs for the legacy plugin to enforce.
 
 During legacy delegation, the reader must satisfy each plugin's restrictions;
 Paid Access does not let a successful legacy response silently discard its

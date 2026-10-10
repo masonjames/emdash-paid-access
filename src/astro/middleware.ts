@@ -13,5 +13,10 @@ export const onRequest = defineMiddleware(async (context, next) => {
 	if (response.headers.get("Content-Type")?.toLowerCase().includes("text/html")) {
 		response.headers.set("Cache-Control", "private, no-store");
 	}
+	// Astro's route cache ignores Cache-Control, so a no-store response (HTML,
+	// paid agent Markdown, account redirects) must opt out explicitly. Do it
+	// after next(), because a later page or route hint clears set(false). A
+	// disabled cache warns on any set(), so leave it alone.
+	if (context.cache?.enabled && response.headers.get("Cache-Control")?.toLowerCase().includes("no-store")) context.cache.set(false);
 	return response;
 });

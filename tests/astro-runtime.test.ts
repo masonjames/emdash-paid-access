@@ -114,6 +114,75 @@ it("preserves cache policy for non-HTML responses", async () => {
 	expect(response.headers.get("Cache-Control")).toBe("public, max-age=60");
 });
 
+// Mirrors AstroCache.set(): a later hint clears an earlier set(false).
+function routeCache(enabled = true) {
+	const state = { disabled: false };
+	const set = vi.fn((input: unknown) => { state.disabled = input === false; });
+	return { cache: { enabled, set }, state };
+}
+const html = () => new Response("<p>page</p>", { headers: { "Content-Type": "text/html" } });
+
+it("disables Astro's route cache for HTML after the page sets a cache hint", async () => {
+	const { onRequest } = await import("../src/astro/middleware.js");
+	const { locals } = setup();
+	const { cache, state } = routeCache();
+	const context = { locals, request, cookies: { get: () => undefined }, cache };
+	const response = await onRequest(context as unknown as Parameters<typeof onRequest>[0], async () => { cache.set({ maxAge: 300, tags: ["post"] }); return html(); });
+	expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+	expect(cache.set).toHaveBeenLastCalledWith(false);
+	expect(state.disabled).toBe(true);
+});
+
+it("leaves the route cache alone for non-HTML responses and contexts without cache", async () => {
+	const { onRequest } = await import("../src/astro/middleware.js");
+	const { locals } = setup();
+	const { cache, state } = routeCache();
+	const json = { locals, request, cookies: { get: () => undefined }, cache };
+	await onRequest(json as unknown as Parameters<typeof onRequest>[0], async () => { cache.set({ maxAge: 60 }); return new Response("{}", { headers: { "Content-Type": "application/json" } }); });
+	expect(cache.set).toHaveBeenCalledOnce(); expect(state.disabled).toBe(false);
+	const bare = { locals, request, cookies: { get: () => undefined } };
+	const response = await onRequest(bare as unknown as Parameters<typeof onRequest>[0], async () => html());
+	expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+});
+
+it("disables Astro's route cache for a paid agent response marked no-store", async () => {
+	const { onRequest } = await import("../src/astro/middleware.js");
+	const { locals } = setup();
+	const { cache, state } = routeCache();
+	const context = { locals, request: new Request("https://site.test/agents/posts/slug.md"), cookies: { get: () => undefined }, cache };
+	const response = await onRequest(context as unknown as Parameters<typeof onRequest>[0], async () => {
+		cache.set({ maxAge: 600 });
+		return new Response("# Paid body", { headers: { "Content-Type": "text/markdown; charset=utf-8", "Cache-Control": "private, no-store" } });
+	});
+	expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+	expect(cache.set).toHaveBeenLastCalledWith(false);
+	expect(state.disabled).toBe(true);
+});
+
+it("keeps the route cache for cacheable non-HTML responses", async () => {
+	const { onRequest } = await import("../src/astro/middleware.js");
+	const { locals } = setup();
+	const { cache, state } = routeCache();
+	const context = { locals, request: new Request("https://site.test/agents/offers.json"), cookies: { get: () => undefined }, cache };
+	const response = await onRequest(context as unknown as Parameters<typeof onRequest>[0], async () => {
+		cache.set({ maxAge: 300 });
+		return Response.json({ offers: [] }, { headers: { "Cache-Control": "public, max-age=300" } });
+	});
+	expect(response.headers.get("Cache-Control")).toBe("public, max-age=300");
+	expect(cache.set).not.toHaveBeenCalledWith(false);
+	expect(state.disabled).toBe(false);
+});
+
+it("does not touch a cache that is not enabled", async () => {
+	const { onRequest } = await import("../src/astro/middleware.js");
+	const { locals } = setup();
+	const { cache } = routeCache(false);
+	const context = { locals, request, cookies: { get: () => undefined }, cache };
+	const response = await onRequest(context as unknown as Parameters<typeof onRequest>[0], async () => html());
+	expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+	expect(cache.set).not.toHaveBeenCalled();
+});
+
 it("calls private routes through the server runtime when locals only carry the public dispatcher", async () => {
 	// EmDash's anonymous fast path (every AI agent) exposes only handlePublicPluginApiRoute.
 	runtimeCall.mockClear();

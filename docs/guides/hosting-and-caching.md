@@ -22,8 +22,8 @@ site, not just the paywall's appearance.
 
 | Surface | Application behavior | Host requirement |
 | --- | --- | --- |
-| HTML with the companion enabled (including public pages) | `Cache-Control: private, no-store` | Do not cache HTML that depends on a member session |
-| `/agents/{collection}/{slug}.md` | Private/no-store, including denied responses | Bypass shared caches; do not replay a paid body to an unpaid request |
+| HTML with the companion enabled (including public pages) | `Cache-Control: private, no-store`; Astro's route cache disabled | Do not cache HTML that depends on a member session |
+| `/agents/{collection}/{slug}.md` | Private/no-store, including denied responses; Astro's route cache disabled | Bypass shared caches; do not replay a paid body to an unpaid request |
 | Successful account redirects | Private/no-store | Bypass `/account/*`; never cache sign-in/verification responses |
 | `/agents/offers.json` | `public, max-age=300` | Public metadata only; allow up to five minutes of offer staleness |
 | Static assets | Host-managed | Ordinary static caching may remain enabled |
@@ -33,6 +33,11 @@ offers list can be cached. If you make an exception for the list, match that
 exact path, not all `.json` or Markdown responses. Do not route paid content
 through an extension-based public cache rule. Use your CDN/proxy's own rule
 ordering semantics to ensure the bypass wins over a broad cache-everything rule.
+
+Paid Access turns off Astro's route cache for every `no-store` response after
+the page and its route rules have run. Its middleware runs with `order: "post"`,
+so a site middleware that wraps it must not set a cache hint after its own
+`next()` for these responses; a later hint re-enables the cache.
 
 Do not place session tokens or payment signatures in cache keys, analytics, or
 request logs. A URL with no query string can still be a personalized response.

@@ -39,17 +39,15 @@ export async function accessHandler(routeCtx: RouteContext, ctx: PluginContext) 
 }
 
 async function resolveHumanAccess(routeCtx: RouteContext, ctx: PluginContext, settings: PaidAccessSettings, restrictionRecords: Awaited<ReturnType<typeof getEntryRestrictions>>): Promise<AccessDecision | { ok: false; error: string }> {
-	const { requiredPlanSlugs: callerRequiredPlanSlugs } = readAccessInput(routeCtx);
+	// Already parsed; unknown or removed caller plans must restrict, never vanish.
+	const { requiredPlanSlugs: callerPlanSlugs } = readAccessInput(routeCtx);
 	const humanRestrictionRecords = restrictionRecords.filter(
 		(record) => record.policy === "members" || record.policy === "members-only",
 	);
 	const restrictionPlanSlugs = humanRestrictionRecords.flatMap((record) => record.requiredPlanSlugs || []);
 	const restrictionProductIds = humanRestrictionRecords.flatMap((record) => record.productIds || []);
-	const validPlanSlugs = settings.humans.plans.map((plan) => plan.slug);
-	const requiredPlanSlugs = uniqueStrings([
-		...restrictionPlanSlugs,
-		...parsePlanSlugs(callerRequiredPlanSlugs, validPlanSlugs),
-	]);
+	const validPlanSlugs = new Set(settings.humans.plans.map((plan) => plan.slug));
+	const requiredPlanSlugs = uniqueStrings([...restrictionPlanSlugs, ...callerPlanSlugs]);
 	const requiredProductIds = uniqueStrings([
 		...restrictionProductIds,
 		...resolveRequiredProductIds(settings.humans.plans, requiredPlanSlugs),
@@ -80,7 +78,7 @@ async function resolveHumanAccess(routeCtx: RouteContext, ctx: PluginContext, se
 			requiredProductIds,
 		};
 	}
-	if (requiredProductIds.length === 0) {
+	if (requiredProductIds.length === 0 || callerPlanSlugs.some((slug) => !validPlanSlugs.has(slug))) {
 		return { restricted: true, authenticated, hasAccess: false, email, requiredPlanSlugs, requiredProductIds, error: "Required plans are not configured." };
 	}
 

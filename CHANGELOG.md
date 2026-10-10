@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- In stripe mode, an access check that requires an unknown or removed plan now
+  fails closed, even beside a configured plan. It used to drop the unknown plan
+  and could grant access. Off and delegate modes pass the plans through unchanged.
+- HTML and every other `no-store` response, including paid agent Markdown and
+  account redirects, now opt out of Astro's route cache. Before, a page hint or a
+  configured route rule could still let Astro store such a response and replay it,
+  for example a paid agent read to an unpaid agent. Sites without a cache
+  provider are unaffected.
+
 ## 0.1.0-beta.1 — 2026-10-09
 
 First standalone Paid Access beta, derived from Restrict With Stripe for EmDash
