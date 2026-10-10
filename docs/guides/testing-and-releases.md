@@ -29,9 +29,9 @@ The aggregate gate writes:
 
 | Artifact | Purpose |
 | --- | --- |
-| `artifacts/emdash-paid-access-0.1.0-beta.1.tgz` | npm-format package for a consumer site |
-| `artifacts/emdash-paid-access-0.1.0-beta.1.tgz.sha256` | Digest of that exact npm archive |
-| `artifacts/paid-access-0.1.0-beta.1.tar.gz` | Sandbox-format package from the same version |
+| `artifacts/emdash-paid-access-0.1.0-beta.2.tgz` | npm-format package for a consumer site |
+| `artifacts/emdash-paid-access-0.1.0-beta.2.tgz.sha256` | Digest of that exact npm archive |
+| `artifacts/paid-access-0.1.0-beta.2.tar.gz` | Sandbox-format package from the same version |
 
 The package checker verifies exported files, consumer resolution of the companion
 and x402 middleware, matching core bytes across formats, and preserved source
@@ -113,7 +113,7 @@ the original Git history; use a Git checkout when preparing a contribution.
 ## Release channels
 
 Public source, npm, and the EmDash registry are separate delivery steps. The
-source and npm `0.1.0-beta.1` are public, and the EmDash
+source is public, `0.1.0-beta.2` is the current npm beta, and the EmDash
 registry remains unpublished. A Node site can use the npm core descriptor and
 companion without waiting for registry publication.
 
@@ -123,14 +123,14 @@ companion without waiting for registry publication.
    changelog and release evidence to describe observed results and beta limits.
 2. Finalize the source revision and run `pnpm release:check`. Review the packed
    contents, preserve the archive's checksum, and test that exact artifact in a
-   fresh consumer. Keep `0.1.0-beta.1` consistent across source and artifacts.
+   fresh consumer. Keep `0.1.0-beta.2` consistent across source and artifacts.
 3. Authenticate the intended npm account with `pnpm login --registry
    https://registry.npmjs.org`, then confirm it with `pnpm whoami --registry
    https://registry.npmjs.org`. Keep credentials outside the repository.
 4. After acceptance, publish the reviewed archive with the `beta` dist-tag:
 
 ```sh
-pnpm publish ./artifacts/emdash-paid-access-0.1.0-beta.1.tgz \
+pnpm publish ./artifacts/emdash-paid-access-0.1.0-beta.2.tgz \
   --registry https://registry.npmjs.org \
   --tag beta --access public --publish-wait-timeout 600000
 ```

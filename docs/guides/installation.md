@@ -8,14 +8,14 @@ email provider, or deployment adapter.
 
 ## 1. Choose a package
 
-The public npm beta is `0.1.0-beta.1`. The EmDash registry remains unpublished. An npm installation on
+The public npm beta is `0.1.0-beta.2`. The EmDash registry remains unpublished. An npm installation on
 Node includes the core descriptor and companion and does not need a registry
 listing.
 
 Install the exact beta in your site:
 
 ```sh
-pnpm add emdash-paid-access@0.1.0-beta.1 @emdash-cms/x402@1.2.0
+pnpm add emdash-paid-access@0.1.0-beta.2 @emdash-cms/x402@1.2.0
 ```
 
 The site must satisfy these peer requirements: `emdash ^1.2.0`,
@@ -37,7 +37,7 @@ pnpm release:check
 The command writes a checked npm archive under `artifacts/`. In your site:
 
 ```sh
-pnpm add /path/to/emdash-paid-access/artifacts/emdash-paid-access-0.1.0-beta.1.tgz @emdash-cms/x402@1.2.0
+pnpm add /path/to/emdash-paid-access/artifacts/emdash-paid-access-0.1.0-beta.2.tgz @emdash-cms/x402@1.2.0
 ```
 
 Record the source commit and archive checksum you evaluated. A source build

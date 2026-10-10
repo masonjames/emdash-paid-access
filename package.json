@@ -1,6 +1,6 @@
 {
   "name": "emdash-paid-access",
-  "version": "0.1.0-beta.1",
+  "version": "0.1.0-beta.2",
   "license": "GPL-2.0-or-later",
   "copyright": "Copyright 2026 Stranger Studios; modified by Mason James 2026-09-23",
   "type": "module",
@@ -102,7 +102,8 @@
     "docs/README.md",
     "docs/guides",
     "docs/reference",
-    "docs/releases/0.1.0-beta.1.md"
+    "docs/releases/0.1.0-beta.1.md",
+    "docs/releases/0.1.0-beta.2.md"
   ],
   "packageManager": "pnpm@12.10.1",
   "description": "Stripe memberships and x402 paid reads for EmDash, with server-rendered access control and an Astro companion.",

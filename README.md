@@ -35,15 +35,16 @@ separate [services from Mason James](https://masonjames.com/plugins/paid-access/
 
 ## Beta status
 
-`0.1.0-beta.1` is the first public npm beta. **The EmDash plugin directory
+`0.1.0-beta.2` is the current public npm beta. **The EmDash plugin directory
 remains unpublished.** The [installation guide](docs/guides/installation.md)
 covers npm installation and building from the public source.
 
 Try the [protected demo post](https://masonjames.com/blog/paid-access-demo/):
 people use the site's existing Stripe memberships; agents pay $0.001 in
 **Base Sepolia test USDC**. This demonstrates testnet settlement, not mainnet
-revenue. See the [release verification](docs/releases/0.1.0-beta.1.md) for the
-tested paths and remaining limits.
+revenue. See the [0.1.0-beta.1 verification](docs/releases/0.1.0-beta.1.md) for the
+tested paths and remaining limits, and the [0.1.0-beta.2 verification](docs/releases/0.1.0-beta.2.md)
+for what this beta adds and what was checked again.
 
 The beta targets **Node 22.12+**, **EmDash 1.2**, **x402 1.2**, and
 **Astro `^6.1.3 || ^7.3.5`**. Both payment modules start off. Local tests and
@@ -61,7 +62,7 @@ Start with an existing server-rendered EmDash 1.2 site on Node **22.12+**.
 Install the exact beta and its x402 peer:
 
 ```sh
-pnpm add emdash-paid-access@0.1.0-beta.1 @emdash-cms/x402@1.2.0
+pnpm add emdash-paid-access@0.1.0-beta.2 @emdash-cms/x402@1.2.0
 ```
 
 The [source-build instructions](docs/guides/installation.md#build-from-source)
