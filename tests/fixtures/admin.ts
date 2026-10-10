@@ -38,9 +38,23 @@ function collection() {
 	} };
 }
 export const paid = { agentsMode: "paid", agentsNetwork: "eip155:84532", agentsPayTo: `0x${"1".repeat(40)}` };
+// `emvb_pages` stands in for a visual builder's pages, edited in the builder's own canvas;
+// the plugin content API lists it like any other collection. An unknown collection throws, as EmDash does.
+const entries: Record<string, Array<{ id: string; slug: string | null; locale: string | null; status: string; data: Record<string, unknown> }>> = {
+	posts: [{ id: "1", slug: "hello", locale: null, status: "published", data: { title: "Hello" } }],
+	emvb_pages: [
+		{ id: "01PRICING", slug: "pricing", locale: null, status: "published", data: { title: "Pricing" } },
+		{ id: "01TARIFS", slug: "pricing", locale: "fr", status: "published", data: { title: "Tarifs" } },
+		{ id: "01DRAFT", slug: "draft", locale: null, status: "draft", data: { title: "Draft" } },
+	],
+};
 export function fixture(seed: Record<string, unknown> = {}) {
 	return { settings: store(seed), kv: store(), storage: { restrictions: collection(), taxonomy_restrictions: collection(), receipts: collection() },
-		content: { get: async () => ({ id: "1", slug: "hello", status: "published", data: { title: "Hello" } }) },
+		content: { get: async () => ({ id: "1", slug: "hello", status: "published", data: { title: "Hello" } }),
+			list: async (name: string, { where }: { where?: { status?: string }; limit?: number } = {}) => {
+				const items = entries[name]; if (!items) throw new Error(`Unknown collection: ${name}`);
+				return { items: items.filter(e => !where?.status || e.status === where.status), hasMore: false };
+			} },
 		taxonomies: { getAll: async () => [{ name: "category", label: "Categories", labelSingular: "Category" }], getTerms: async () => [{ id: "premium", taxonomy: "category", label: "Premium" }], getEntryTerms: async () => [{ id: "premium", taxonomy: "category", label: "Premium" }] },
 		http: { fetch: async () => new Response(JSON.stringify({ data: [{ id: "prod_one", name: "Membership" }], has_more: false }), { headers: { "Content-Type": "application/json" } }) },
 	};

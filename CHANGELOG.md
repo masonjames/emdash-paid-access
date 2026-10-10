@@ -12,6 +12,12 @@
 - A private `entitlements` core route, called only by the companion, that
   reports the human mode and the reader's owned plans. It writes nothing to
   storage, apart from clearing an expired session.
+- **Paid Access Rules → Add a rule for a page** adds a members-only rule for a
+  published entry you edit outside EmDash's standard editor, such as a page
+  built in a visual builder's own canvas. Page rules restrict people only and
+  are never sold to AI agents. The form only adds a rule, never overwrites one,
+  and needs no new permission. A page rule takes effect only when the site's
+  route for those pages checks Paid Access.
 
 ### Changed
 

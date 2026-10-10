@@ -52,6 +52,51 @@ Paid Access does not let a successful legacy response silently discard its
 requirements. Free agent access is suppressed while legacy presence/delegation
 is active. See [migration](../guides/migration.md).
 
+## Rules for pages of any collection
+
+The **Paid access** panel appears only in EmDash's standard editor. For an entry
+you edit outside it, such as a page built in a visual builder's own canvas (for
+example in an `emvb_pages` collection), open **Paid Access Rules** and use
+**Add a rule for a page**:
+
+1. Enter the collection's slug and choose **Choose collection**.
+2. Choose one of its 100 newest published entries and, when Stripe plans are
+   configured, the plans that include it. Then save.
+
+A page rule is always `members-only`: it restricts people and is never sold to
+AI agents, because builder pages aren't served to agents. The agent route only
+serves the collections named in the companion's
+[`collections`](configuration.md) option, as Markdown from Portable Text
+`content`. The rule appears under **Posts** and combines with category and tag
+rules as described above. The form only adds rules: if the page already has
+one, remove it from the table first, then add it again.
+
+A page rule takes effect only when the site's route for those pages checks
+Paid Access. Pass
+the same entry identity that `PaidContent` uses: the content ID as `id` and the
+entry's route ID as `slug`.
+
+```astro
+---
+import { canRenderBody } from "emdash-paid-access/astro/runtime";
+import Paywall from "emdash-paid-access/components/Paywall.astro";
+
+const collection = "your_pages_collection";
+// Only if the builder's audience rules need them:
+const segments = await Astro.locals.paidAccess.segments();
+const entry = await loadBuilderPage(Astro, { segments }); // your builder's page lookup
+const decision = await Astro.locals.paidAccess.access({ collection, id: String(entry.data.id ?? entry.id), slug: entry.id });
+---
+{canRenderBody(decision)
+	? <BuilderPage entry={entry} />
+	: <Paywall decision={decision} redirect={Astro.url.pathname} collection={collection} slug={entry.id} />}
+```
+
+Element-level teasers need no rule at all. Showing one block to `plan:<slug>`
+readers and another to everyone else is the builder's own audience rule, fed by
+[`segments()`](configuration.md#segments). Add a page rule only when the whole
+page must stay out of the HTML for readers without access.
+
 ## Safe defaults and disabled modes
 
 - Both modules default off. Agent mode off returns 404.

@@ -50,6 +50,47 @@ describe("rules page", () => {
 		await admin(ctx, submit("rules:taxonomy:save:category", { term: "premium", people: "members", agents: "pay", price: "$0.05" }));
 		expect(await ctx.storage.taxonomy_restrictions.get("category:premium")).toMatchObject({ policy: "agents-pay", agentPrice: "$0.05" });
 	});
+	it("adds a rule for a published page of a visual builder's collection", async () => {
+		const ctx = fixture(paid);
+		const start = await admin(ctx, page("/rules"));
+		expect(flatten(start.blocks).find(b => b.type === "form" && b.submit.action_id === "rules:page:choose")).toMatchObject({ fields: [{ type: "text_input", action_id: "collection", initial_value: "emvb_pages" }] });
+		expect(JSON.stringify(start)).toContain("A page rule takes effect only when the site's route for those pages checks Paid Access.");
+		const chosen = await admin(ctx, submit("rules:page:choose", { collection: "emvb_pages" }));
+		// Drafts aren't offered, and a translation shows its locale.
+		expect(flatten(chosen.blocks).find(b => b.type === "form" && b.submit.action_id === "rules:page:save:emvb_pages")).toMatchObject({ fields: [{ type: "combobox", action_id: "entry", label: "Page", options: [{ value: "01PRICING", label: "Pricing · pricing" }, { value: "01TARIFS", label: "Tarifs · pricing · fr" }] }] });
+		const result = await admin(ctx, submit("rules:page:save:emvb_pages", { entry: "01PRICING" }));
+		expect(result.toast).toEqual({ type: "success", message: "Rule saved. A page rule takes effect only when the site's route for those pages checks Paid Access." });
+		expect(await ctx.storage.restrictions.get("emvb_pages:01PRICING")).toMatchObject({ collectionSlug: "emvb_pages", contentId: "01PRICING", slug: "pricing", title: "Pricing", policy: "members-only", agentPrice: null });
+		expect(result.blocks.find(b => b.type === "table")).toMatchObject({ rows: [{ post: { label: "Pricing · pricing", target: { kind: "content", collection: "emvb_pages", id: "01PRICING" } }, people: "Members only", agents: "Not sold" }] });
+	});
+	it("saves page rules for people only in every mode, including delegate", async () => {
+		const plan = { slug: "premium", name: "Premium", stripeProductId: "prod_one", grantsVisibility: [] };
+		for (const [seed, plans] of [[paid, []], [{ ...paid, humansMode: "stripe", humansPlans: [plan] }, ["premium"]], [{ ...paid, humansMode: "delegate", humansPlans: [plan] }, []]] as const) {
+			const ctx = fixture(seed);
+			const form = JSON.stringify(await admin(ctx, submit("rules:page:choose", { collection: "emvb_pages" })));
+			expect(form).not.toContain('"action_id":"agents"'); expect(form).not.toContain('"action_id":"people"');
+			// Forged agent answers are ignored.
+			expect((await admin(ctx, submit("rules:page:save:emvb_pages", { entry: "01PRICING", people: "anyone", agents: "pay", price: "$0.05", plans: ["premium"] }))).toast?.type).toBe("success");
+			expect(await ctx.storage.restrictions.get("emvb_pages:01PRICING")).toMatchObject({ policy: "members-only", agentPrice: null, requiredPlanSlugs: plans });
+		}
+	});
+	it("refuses to overwrite an existing page rule from a stale form", async () => {
+		const ctx = fixture({ ...paid, humansMode: "stripe", humansPlans: [{ slug: "premium", name: "Premium", stripeProductId: "prod_one", grantsVisibility: [] }] });
+		const existing = { ...rule, collectionSlug: "emvb_pages", contentId: "01PRICING", slug: "pricing", title: "Pricing", policy: "members-only", agentPrice: null, requiredPlanSlugs: ["premium"] };
+		await ctx.storage.restrictions.put("emvb_pages:01PRICING", existing);
+		const result = await admin(ctx, submit("rules:page:save:emvb_pages", { entry: "01PRICING", people: "anyone", agents: "free" }));
+		expect(result.toast).toEqual({ type: "error", message: "A rule already exists for this page. Remove it from the table first, then add it again." });
+		expect(await ctx.storage.restrictions.get("emvb_pages:01PRICING")).toEqual(existing);
+	});
+	it("refuses a page rule for an entry outside the chosen collection's published list", async () => {
+		const ctx = fixture(paid); const values = { people: "anyone", agents: "pay", price: "$0.05" };
+		// A draft, a post from another collection, nothing, and an unknown collection.
+		for (const [name, entry] of [["emvb_pages", "01DRAFT"], ["emvb_pages", "1"], ["emvb_pages", ""], ["missing", "01PRICING"]]) {
+			expect((await admin(ctx, submit(`rules:page:save:${name}`, { ...values, entry }))).toast).toEqual({ type: "error", message: "Choose a published page in this collection, then save again." });
+		}
+		expect(ctx.storage.restrictions.data.size).toBe(0);
+		expect(JSON.stringify(await admin(ctx, submit("rules:page:choose", { collection: "missing" })))).toContain("Couldn't read the collection missing.");
+	});
 	it("paginates posts and counts all rules beyond the storage page size", async () => {
 		const ctx = fixture(); for (let i = 0; i < 205; i++) await ctx.storage.restrictions.put(`posts:${i}`, { ...rule, contentId: String(i), policy: i % 2 ? "members" : "agents-pay" });
 		const result = await admin(ctx, page("/rules")); const more = result.blocks.find(b => b.type === "actions");
