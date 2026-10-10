@@ -15,9 +15,10 @@
 - **Paid Access Rules → Add a rule for a page** adds a members-only rule for a
   published entry you edit outside EmDash's standard editor, such as a page
   built in a visual builder's own canvas. Page rules restrict people only and
-  are never sold to AI agents. The form only adds a rule, never overwrites one,
-  and needs no new permission. A page rule takes effect only when the site's
-  route for those pages checks Paid Access.
+  are never sold to AI agents; in stripe mode each one needs at least one plan.
+  The form only adds a rule, never overwrites one, and needs no new permission.
+  A page rule takes effect only when the site's route for those pages checks
+  Paid Access.
 - A [visual builders guide](docs/guides/visual-builders.md) covers the segment
   vocabulary and its failure behavior by mode, host recipes for pages, theme
   parts and post templates, teasers, whole-page rules, caching duties,

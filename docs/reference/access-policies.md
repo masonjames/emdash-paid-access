@@ -65,7 +65,8 @@ example in an `emvb_pages` collection), open **Paid Access Rules** and use
 
 1. Enter the collection's slug and choose **Choose collection**.
 2. Choose one of its 100 newest published entries and, when Stripe plans are
-   configured, the plans that include it. Then save.
+   configured, the plans that include it. Then save. In stripe mode, choose at
+   least one plan; until the site has a plan, the form isn't offered.
 
 A page rule is always `members-only`: it restricts people and is never sold to
 AI agents, because builder pages aren't served to agents. The agent route only

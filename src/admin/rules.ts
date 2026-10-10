@@ -65,8 +65,9 @@ export async function rulesPage(ctx: PluginContext, cursor?: string, taxonomy?: 
 		context("For an entry you edit outside EmDash's standard editor, such as a page built in a visual builder's own canvas. Enter the slug of its collection. Page rules are for members only, because these pages aren't served to AI agents."),
 		context(`${PAGE_EFFECT} See Access policies, “Rules for pages of any collection”.`),
 		form("rules:page:choose", "Choose collection", [textField("collection", "Collection", pageCollection ?? PAGE_COLLECTION)]),
-		...(pageCollection && pages?.length ? [context(`Choose a published page in ${pageCollection}. The 100 newest are listed.`), form(`rules:page:save:${pageCollection}`, "Save rule", [{ type: "combobox", action_id: "entry", label: "Page", options: pages.map(p => ({ value: p.id, label: [pageTitle(p) || p.id, p.slug, p.locale].filter(Boolean).join(" · ") })) }, ...pageRuleFields(s)]),
-			...(s.humans.mode === "stripe" && !s.humans.plans.length ? [context("Add a plan under Paid Access → Settings → Members first.")] : [])]
+		// In stripe mode a rule without a plan can't grant access, so offer no form until a plan exists.
+		...(pageCollection && pages?.length && s.humans.mode === "stripe" && !s.humans.plans.length ? [context("Add a plan under Paid Access → Settings → Members first.")]
+			: pageCollection && pages?.length ? [context(`Choose a published page in ${pageCollection}. The 100 newest are listed.`), form(`rules:page:save:${pageCollection}`, "Save rule", [{ type: "combobox", action_id: "entry", label: "Page", options: pages.map(p => ({ value: p.id, label: [pageTitle(p) || p.id, p.slug, p.locale].filter(Boolean).join(" · ") })) }, ...pageRuleFields(s)])]
 			: pageCollection && pages ? [context(`Publish a page in ${pageCollection}, then choose this collection again.`)]
 			: pageCollection ? [context(`Couldn't read the collection ${pageCollection}. Check its slug and choose again.`)] : []),
 	] };
@@ -100,8 +101,10 @@ export async function rulesInteraction(route: RouteContext, ctx: PluginContext):
 			const entry = (await publishedEntries(ctx, pageCollection))?.find(p => p.id === i.values.entry);
 			if (!entry) throw new AdminInputError("Choose a published page in this collection, then save again.");
 			const settings = await loadSettings(ctx);
+			const plans = offersPlans(settings) ? i.values.plans ?? [] : [];
+			if (settings.humans.mode === "stripe" && !(Array.isArray(plans) && plans.length)) throw new AdminInputError("Choose at least one plan. A page rule without a plan can't grant access to anyone.");
 			// Add-only: an empty expected revision applies only while no rule exists, so a stale form can't loosen a newer rule.
-			result = await restrictionsHandler(request(route, { policy: "members-only", agentPrice: null, requiredPlanSlugs: offersPlans(settings) ? i.values.plans ?? [] : [], productIds: [], expectedRevision: "", collectionSlug: pageCollection, contentId: entry.id, slug: entry.slug, title: pageTitle(entry) }), ctx);
+			result = await restrictionsHandler(request(route, { policy: "members-only", agentPrice: null, requiredPlanSlugs: plans, productIds: [], expectedRevision: "", collectionSlug: pageCollection, contentId: entry.id, slug: entry.slug, title: pageTitle(entry) }), ctx);
 			if (isRecord(result) && result.stale === true) throw new AdminInputError("A rule already exists for this page. Remove it from the table first, then add it again.");
 		} else throw new AdminInputError("This action is unavailable. Reload Rules and try again.");
 	} catch (error) {

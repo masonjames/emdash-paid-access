@@ -78,9 +78,25 @@ describe("rules page", () => {
 		const ctx = fixture({ ...paid, humansMode: "stripe", humansPlans: [{ slug: "premium", name: "Premium", stripeProductId: "prod_one", grantsVisibility: [] }] });
 		const existing = { ...rule, collectionSlug: "emvb_pages", contentId: "01PRICING", slug: "pricing", title: "Pricing", policy: "members-only", agentPrice: null, requiredPlanSlugs: ["premium"] };
 		await ctx.storage.restrictions.put("emvb_pages:01PRICING", existing);
-		const result = await admin(ctx, submit("rules:page:save:emvb_pages", { entry: "01PRICING", people: "anyone", agents: "free" }));
+		const result = await admin(ctx, submit("rules:page:save:emvb_pages", { entry: "01PRICING", people: "anyone", agents: "free", plans: ["premium"] }));
 		expect(result.toast).toEqual({ type: "error", message: "A rule already exists for this page. Remove it from the table first, then add it again." });
 		expect(await ctx.storage.restrictions.get("emvb_pages:01PRICING")).toEqual(existing);
+	});
+	it("refuses a page rule with no plan in stripe mode", async () => {
+		const ctx = fixture({ ...paid, humansMode: "stripe", humansPlans: [{ slug: "premium", name: "Premium", stripeProductId: "prod_one", grantsVisibility: [] }] });
+		for (const values of [{ entry: "01PRICING" }, { entry: "01PRICING", plans: [] }, { entry: "01PRICING", plans: "premium" }]) {
+			expect((await admin(ctx, submit("rules:page:save:emvb_pages", values))).toast).toEqual({ type: "error", message: "Choose at least one plan. A page rule without a plan can't grant access to anyone." });
+		}
+		expect(ctx.storage.restrictions.data.size).toBe(0);
+	});
+	it("offers no page form in stripe mode until a plan exists", async () => {
+		const ctx = fixture({ ...paid, humansMode: "stripe", humansPlans: [] });
+		const chosen = await admin(ctx, submit("rules:page:choose", { collection: "emvb_pages" }));
+		expect(flatten(chosen.blocks).some(b => b.type === "form" && b.submit.action_id === "rules:page:save:emvb_pages")).toBe(false);
+		expect(JSON.stringify(chosen)).toContain("Add a plan under Paid Access → Settings → Members first.");
+		// A stale form from before the plans were removed can't save an unusable rule either.
+		expect((await admin(ctx, submit("rules:page:save:emvb_pages", { entry: "01PRICING" }))).toast?.type).toBe("error");
+		expect(ctx.storage.restrictions.data.size).toBe(0);
 	});
 	it("refuses a page rule for an entry outside the chosen collection's published list", async () => {
 		const ctx = fixture(paid); const values = { people: "anyone", agents: "pay", price: "$0.05" };
