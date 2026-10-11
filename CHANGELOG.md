@@ -6,6 +6,9 @@
 
 - The visual builders guide documents EmVB's `visitor.segments` option, its
   current name rule and the Post Content caveat.
+- The installation guide explains pnpm's 24-hour release cooldown on
+  scaffolded EmDash sites, and the 0.1.0-beta.2 verification note records a
+  fresh install from public npm.
 
 ## 0.1.0-beta.2 — 2026-10-10
 

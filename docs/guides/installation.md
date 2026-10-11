@@ -18,6 +18,11 @@ Install the exact beta in your site:
 pnpm add emdash-paid-access@0.1.0-beta.2 @emdash-cms/x402@1.2.0
 ```
 
+Sites scaffolded with `create-emdash` set `minimumReleaseAge: 1440` in
+`pnpm-workspace.yaml`, so pnpm refuses any release published in the last 24
+hours with `ERR_PNPM_NO_MATURE_MATCHING_VERSION`. Wait a day after a release,
+or add `emdash-paid-access` to `minimumReleaseAgeExclude` in that file.
+
 The site must satisfy these peer requirements: `emdash ^1.2.0`,
 `astro ^6.1.3 || ^7.3.5`, and `@emdash-cms/x402 ^1.2.0`.
 The installed runtime supports Node 22.12+.
