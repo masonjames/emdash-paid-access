@@ -148,7 +148,8 @@ well: a member sees the signed-out header on that request.
 
 [EmVB](https://github.com/PerkyZZ999/EmVB) takes the list as
 `visitor.segments`, on its page resolver and on its theme-part resolver.
-Visitor segments are on EmVB's main branch.
+Visitor segments are on EmVB's main branch (layout schema 14 and later) and
+not yet in a release.
 
 ```astro
 ---
@@ -167,28 +168,14 @@ popup or float whose elements are all hidden for a reader still appears for
 them, empty, so don't build one only from gated elements. Editors type the
 names under **Visitors → Segments** on an element.
 
-EmVB's segment names are lowercase letters, digits, `-` and `_`, up to 40
-characters. A name from the host that doesn't fit is dropped with no log, so
-today `plan:<slug>` doesn't reach EmVB and only `member` and `entitled`
-survive. [EmVB issue 6](https://github.com/PerkyZZ999/EmVB/issues/6) is the
-open request to allow `:` and 64 characters. Until it lands, a host that needs
-plan rules in EmVB can map the names itself, and editors type `plan-plus` under
-**Visitors → Segments**:
-
-```astro
----
-const segments = (await Astro.locals.paidAccess.segments()).map((s) => s.replace(":", "-"));
----
-```
-
-A plan ID longer than 35 characters still doesn't fit.
-
-The editor applies the same rule when the Segments field loses focus: a name
-that doesn't fit is removed. If that leaves an "Only" rule with nothing in it,
-it is saved as "Only everyone" and every reader sees the element. Before you
-publish, check that your names are still in the field. If they're gone, the
-panel says every visitor matches, and hovering the element's Visitors badge in
-**Layers** shows "Only everyone".
+EmVB's segment names start with a lowercase letter or digit and continue with
+lowercase letters, digits, `:`, `-` and `_`, up to 64 characters, since
+[EmVB issue 6](https://github.com/PerkyZZ999/EmVB/issues/6) was fixed on its
+main branch. Paid Access checks new plan slugs against the same rule, so every
+`plan:<slug>` it emits reaches EmVB. A name from the host that doesn't fit is
+still dropped with no log. In the editor, a name that doesn't fit stays in the
+Segments field with an error and the stored rule is unchanged, and an "Only"
+rule with nothing in it says so instead of matching everyone.
 
 ## Teasers need no rule
 
@@ -225,9 +212,9 @@ else that uses them.
   its own `next()` for these responses, because a later hint turns the route
   cache back on. See [cache rules](hosting-and-caching.md#cache-rules).
 - **EmVB** marks the response `private, no-store` itself when a page or theme
-  part it resolves has a Visitors rule. For any Visitors rule, including one
-  that only matches segments, it also sets its own first-party `emvb_seen`
-  cookie for a year, which a consent banner may need to list.
+  part it resolves has a Visitors rule. It sets its own first-party `emvb_seen`
+  cookie for a year only when a rule uses new or returning; a rule that only
+  matches segments sets no cookie.
 
 Then run the [paid-then-unpaid checks](hosting-and-caching.md#prove-paid-then-unpaid-isolation)
 on a builder page as well as a post.
