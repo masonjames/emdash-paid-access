@@ -107,3 +107,12 @@ it("identifies legacy wallet settings without claiming host payment configuratio
  expect(result).toContain("unavailable, never free");
  expect(result).toContain("Production activation remains pending cache proof");
 });
+
+it("does not report a missing legacy wallet as a host payment failure", async () => {
+ const ctx = fixture({ ...paid, agentsPayTo: "" });
+ const panel = await admin(ctx, page("/settings"));
+ const output = JSON.stringify(panel);
+ expect(output).toContain("Host-managed payments use");
+ expect(output).not.toContain("have no payout wallet");
+ expect(panel.blocks.filter(b => b.type === "banner" && b.variant === "error")).toEqual([]);
+});

@@ -18,5 +18,10 @@ export const onRequest = defineMiddleware(async (context, next) => {
 	return withReaderProvider({
 		id: provider.id,
 		decide: resource => withTrustedPolicyMetadata(() => provider.decide(resource)),
-	}, async () => protectReaderResponse(await next(), context.cache));
+	}, async () => {
+		// The public plugin alias needs the same metadata-only scope as /agents/offers.json.
+		// It never receives a raw-content grant.
+		const isOffers = context.request.method === "GET" && new URL(context.request.url).pathname.replace(/\/$/, "") === "/_emdash/api/plugins/paid-access/offers";
+		return protectReaderResponse(await (isOffers ? withTrustedPolicyMetadata(next) : next()), context.cache);
+	});
 });

@@ -47,7 +47,7 @@ export async function settingsPage(route: RouteContext, ctx: PluginContext, edit
 		{ type: "header", text: "Paid Access" }, context("Charge people with Stripe memberships and AI agents with x402 payments — separately or together."),
 		...(s.humans.mode === "stripe" && !s.emailConfigured ? [banner("Sign-in links can't be sent. Install and configure an email provider plugin, then come back.", "error")] : []),
 		...(legacy ? [banner("Restrict With Stripe is active on this site. Member access is delegated to it until you migrate.", "alert")] : []),
-		...(s.agents.mode !== "off" && (!s.agents.payTo || !s.agents.network) ? [banner("Legacy companion payments have no payout wallet. Host-managed payments instead require host x402 configuration; its status is unverified here.", "error")] : []),
+		...(s.agents.mode !== "off" && (!s.agents.payTo || !s.agents.network) ? [banner("Host-managed payments use the site’s x402 configuration, whose status is unverified here. If you use legacy companion payments, configure their wallet and network below.", "default")] : []),
 		{ type: "tab", block_id: `settings:tabs:${defaultTab}`, default_tab: defaultTab, panels: [
 			{ label: "AI agents", blocks: [
 				...(s.agents.mode === "tokens-only" ? [{ type: "fields" as const, fields: [{ label: "Sell to AI agents", value: "Subscriber tokens only" }] }, context("Subscriber tokens only is the saved mode. Leave the choice below unchanged to keep it.")] : []),

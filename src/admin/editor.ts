@@ -45,7 +45,9 @@ export async function editorPanel(route: RouteContext, ctx: PluginContext): Prom
 		if (legacy && !oldRule) throw new Error("Invalid legacy rule");
 		return { version, own, legacy, rules: [...(own ? [own] : []), ...(oldRule ? [oldRule] : []), ...rules.filter(r => "taxonomyName" in r)] };
 	};
-	let stored = await load();
+	let stored: Awaited<ReturnType<typeof load>>;
+	try { stored = await load(); }
+	catch { return failure("This post’s stored access rules could not be loaded safely. Ask the site maintainer to review them under Advanced rules."); }
 	const editingBlocked = () => stored.legacy ? legacyMessage : delegated && stored.own &&
 		(memberPolicies.includes(stored.own.policy) || (stored.own.requiredPlanSlugs?.length ?? 0) > 0 || (stored.own.productIds?.length ?? 0) > 0) ? delegatedMessage : null;
 	const options = [

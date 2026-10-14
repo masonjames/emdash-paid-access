@@ -15,6 +15,17 @@ const get = (ctx: ReturnType<typeof fixture>) => ctx.storage.restrictions.get("p
 const currentPreset = (panel: BlockResponse) => form(panel).fields.find(f => f.action_id === "preset");
 
 describe("native complete policy form", () => {
+	it("shows a safe recovery message for malformed or unreadable stored rules", async () => {
+		const ctx = fixture(paid);
+		await ctx.storage.restrictions.put("posts:1", { contentId: "1", collectionSlug: "posts" });
+		const panel = await load(ctx);
+		expect(JSON.stringify(panel)).toContain("Advanced rules");
+		expect(panel.blocks.some(b => b.type === "form")).toBe(false);
+		vi.spyOn(ctx.storage.restrictions, "getVersioned").mockRejectedValue(new Error("secret storage detail"));
+		const failed = await load(ctx);
+		expect(JSON.stringify(failed)).not.toContain("secret storage detail");
+		expect(JSON.stringify(failed)).toContain("could not be loaded safely");
+	});
 	it("uses actual Block Kit form contracts with stable field IDs and eq conditionals", async () => {
 		const ctx = fixture({ ...paid, humansMode: "stripe", humansPlans: [plan] });
 		const panel = await load(ctx);
