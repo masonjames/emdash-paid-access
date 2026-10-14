@@ -1,6 +1,7 @@
 // Copyright 2026 Mason James.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+import type {} from "emdash/plugin-payments";
 import { defineMiddleware } from "astro:middleware";
 import options from "virtual:paid-access/config";
 import { createPaidAccess } from "./runtime.js";

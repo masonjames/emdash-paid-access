@@ -22,13 +22,13 @@ export const GET: APIRoute = async ({ params, locals, request, site }) => {
 	if (!params.collection || !options.collections.includes(params.collection) || !params.slug) return empty(404);
 	try {
 		if (options.hostPayments) {
-			const { dispatchPluginApiRequest } = await import("emdash/plugin-payments");
 			const metadata = await (locals.paidAccess?.trustedPolicyMetadata ?? (<T>(run: () => T) => run()))(() => getEmDashEntry(params.collection!, params.slug!));
 			if (!metadata.entry || metadata.isPreview || metadata.entry.data.status !== "published" || !locals.emdash) return empty(404);
+			if (!locals.emdash.handlePublicPaidPluginRoute) return empty(503);
 			const url = new URL(request.url);
 			url.searchParams.set("collection", params.collection);
 			url.searchParams.set("contentId", String(metadata.entry.data.id ?? metadata.entry.id));
-			return dispatchPluginApiRequest({ runtime: locals.emdash, pluginId: "paid-access", path: "agent/read", request: new Request(url, { headers: request.headers }), paymentRegistration: locals.pluginPayments?.["paid-access/agent/read"] });
+			return locals.emdash.handlePublicPaidPluginRoute("paid-access", "agent/read", new Request(url, { headers: request.headers }), locals.pluginPayments?.["paid-access/agent/read"]);
 		}
 		const { entry, isPreview } = await (locals.paidAccess?.trustedContent ?? (<T>(run: () => T) => run()))(() => getEmDashEntry<string, { id?: string; status?: string; title?: string; content?: PortableTextBlock[] }>(params.collection!, params.slug!));
 		// getEmDashEntry can serve preview drafts; agent endpoints must never do so.

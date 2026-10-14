@@ -3,6 +3,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import type { APIContext } from "astro";
 import { getEmDashEntry } from "emdash";
+import options from "./fixtures/paid-access-config.js";
 import { GET, HEAD } from "../src/astro/routes/agent-entry.js";
 import { GET as offers } from "../src/astro/routes/offers.js";
 vi.mock("emdash", () => ({ getEmDashEntry: vi.fn(), getCollectionInfo: vi.fn(async () => ({ urlPattern: "/blog/{slug}/" })) }));
@@ -109,4 +110,19 @@ it("uses the trusted server read for quoting while retaining the native payment 
 	expect(response.status).toBe(402);
 	expect(enforce).toHaveBeenCalledOnce();
 	expect(await response.text()).not.toContain("SENTINEL_BODY");
+});
+
+it("uses only the restricted public paid dispatcher on anonymous native requests", async () => {
+ options.hostPayments = true;
+ try {
+  const { context } = setup();
+  const dispatch = vi.fn(async () => new Response("challenge", { status: 402 }));
+  context.locals.emdash = { handlePublicPaidPluginRoute: dispatch } as unknown as typeof context.locals.emdash;
+  expect((await GET(context)).status).toBe(402);
+  expect(dispatch).toHaveBeenCalledWith("paid-access", "agent/read", expect.any(Request), undefined);
+  const forwarded = dispatch.mock.calls[0] as unknown as [string, string, Request];
+  expect(new URL(forwarded[2].url).searchParams.get("contentId")).toBe("db-1");
+  context.locals.emdash = {} as typeof context.locals.emdash;
+  expect((await GET(context)).status).toBe(503);
+ } finally { options.hostPayments = false; }
 });
