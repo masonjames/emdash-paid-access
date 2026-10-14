@@ -54,6 +54,11 @@ async function resolveHumanAccess(routeCtx: RouteContext, ctx: PluginContext, se
 	]);
 	const restricted = humanRestrictionRecords.length > 0 || requiredPlanSlugs.length > 0 || requiredProductIds.length > 0;
 	if (settings.humans.mode === "off" || settings.humans.mode === "delegate") {
+		// Imported caller requirements may still belong to an installed legacy
+		// provider. Only the trusted coexistence report permits that delegation;
+		// native rules remain disabled and fail closed when our memberships are off.
+		const delegateCaller = settings.humans.mode === "off" && humanRestrictionRecords.length === 0
+			&& requiredPlanSlugs.length > 0 && await ctx.kv?.get("state:legacyPluginPresent") === true;
 		return {
 			restricted,
 			authenticated: false,
@@ -61,8 +66,8 @@ async function resolveHumanAccess(routeCtx: RouteContext, ctx: PluginContext, se
 			email: null,
 			requiredPlanSlugs,
 			requiredProductIds,
-			...(settings.humans.mode === "delegate" ? { delegated: true } : {}),
-			...(settings.humans.mode === "off" && restricted ? { error: "Member access is turned off for this site." } : {}),
+			...(settings.humans.mode === "delegate" || delegateCaller ? { delegated: true } : {}),
+			...(settings.humans.mode === "off" && restricted && !delegateCaller ? { error: "Member access is turned off for this site." } : {}),
 		};
 	}
 	const email = await getSessionEmail(ctx, isRecord(routeCtx.input) ? routeCtx.input.sessionToken : undefined);

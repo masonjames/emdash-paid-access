@@ -59,6 +59,20 @@ it.each(["delegate", "stripe"] as const)("unions restrictions and delegates %s t
 	expect(call[3].headers.get("cookie")).toBe("legacy_session=example");
 	vi.restoreAllMocks();
 });
+it("preserves installed legacy restrictions when native memberships are off", async () => {
+	const { api, publicCall } = setup({ ...open, humanMode: "off" }, { ...open, restricted: true, hasAccess: false });
+	expect(await api.access(entry)).toMatchObject({ restricted: true, hasAccess: false });
+	expect(publicCall.mock.calls.filter(call => call[2] === "access")).toHaveLength(1);
+	resetRuntimeForTests(); resetCoexistenceCacheForTests();
+	const unavailable = setup({ ...open, humanMode: "off" }, open);
+	unavailable.publicCall.mockImplementation(async (_id, _method, path) => path === "access"
+		? { success: false, error: { code: "UNAVAILABLE" } }
+		: { success: true, data: { authenticated: false } });
+	expect(await unavailable.api.access(entry)).toMatchObject({ restricted: true, hasAccess: false });
+	const imported = setup({ ...open, humanMode: "off", restricted: true, hasAccess: false, delegated: true, requiredPlanSlugs: ["plus"] },
+		{ ...open, restricted: true, authenticated: true, hasAccess: true, requiredPlanSlugs: ["plus"] });
+	expect(await imported.api.access(entry)).toMatchObject({ restricted: true, authenticated: true, hasAccess: true, requiredPlanSlugs: ["plus"] });
+});
 it.each([null, { ...open, error: "offline" }, { ok: false, error: "offline" }, { hasAccess: true }])("fails closed on invalid/error access %j", async ours => {
 	expect(await setup(ours).api.access(entry)).toMatchObject({ hasAccess: false, restricted: true });
 });

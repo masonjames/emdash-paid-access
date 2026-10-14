@@ -92,7 +92,9 @@ export function createPaidAccess(locals: PluginLocals, request: Request, session
 			if (!result.ok || !validDecision(result.data) || result.data.error) return failClosedHumanDecision();
 			const ours = result.data;
 			const mode = resolveHumanMode(ours.humanMode ?? (ours.delegated ? "delegate" : "off"), present).mode;
-			if (!ours.delegated && mode !== "delegate") return ours;
+			// Turning our memberships off must not disable an installed legacy
+			// provider's restrictions. Native off-mode restrictions already fail closed above.
+			if (!present && !ours.delegated && mode !== "delegate") return ours;
 			const legacy = await callPublicPlugin(locals, "access", { ...body, sessionToken: undefined, requiredPlanSlugs: ours.requiredPlanSlugs, requiredProductIds: ours.requiredProductIds }, options.legacyPluginId, request);
 			if (!legacy.ok || !validDecision(legacy.data) || legacy.data.error) return failClosedHumanDecision();
 			const legacyDecision = legacy.data;

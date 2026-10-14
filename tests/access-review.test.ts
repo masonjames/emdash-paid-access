@@ -87,3 +87,11 @@ it("uses the trusted coexistence report to delegate forced Stripe before queryin
 	const ctx = { ...context("stripe", "members"), kv: { get: async () => true } };
 	await expect(invoke(accessHandler, ctx)).resolves.toMatchObject({ humanMode: "stripe", delegated: true, restricted: true, hasAccess: false, showExcerpts: true });
 });
+it("delegates imported-only requirements while off only with trusted legacy presence", async () => {
+	const ctx = { ...callerContext("off", ["plus", "removed"]), kv: { get: async () => true } };
+	const result = await invoke(accessHandler, ctx);
+	expect(result).toMatchObject({ restricted: true, hasAccess: false, delegated: true, requiredPlanSlugs: ["plus", "removed"] });
+	expect(result).not.toHaveProperty("error");
+	await expect(invoke(accessHandler, { ...context("off", "members"), kv: ctx.kv })).resolves.toMatchObject({ restricted: true, hasAccess: false, error: "Member access is turned off for this site." });
+	await expect(invoke(accessHandler, { ...ctx, kv: { get: async () => false } })).resolves.toMatchObject({ restricted: true, hasAccess: false, error: "Member access is turned off for this site." });
+});

@@ -4,6 +4,8 @@
 
 ### Changed
 
+- The companion continues enforcing an installed legacy provider's restrictions
+  when native memberships are off; provider failures still deny access.
 - The visual builders guide documents EmVB's `visitor.segments` option, its
   current name rule and the Post Content caveat.
 - The installation guide explains pnpm's 24-hour release cooldown on
