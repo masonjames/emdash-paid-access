@@ -52,6 +52,8 @@ export async function offersHandler(routeCtx: RouteContext, ctx: PluginContext) 
 	const cursor = typeof input.cursor === "string" ? input.cursor : "";
 	const taxonomyPage = cursor.startsWith("taxonomy:");
 	const settings = await loadSettings(ctx);
+	// Network and payout destination come from the serving route's 402 challenge,
+	// not legacy plugin settings: host-managed routes may use different configuration.
 	// Only paid mode sells anything.
 	if (settings.agents.mode !== "paid") return { items: [], nextCursor: null };
 	const items: Array<Record<string, string>> = [];
@@ -76,7 +78,7 @@ export async function offersHandler(routeCtx: RouteContext, ctx: PluginContext) 
 				items.push({
 					type: "content", collection: rule.collectionSlug, slug: entry.slug,
 					title: typeof entry.data.title === "string" ? entry.data.title : "",
-					price, policy: access.policy, network: settings.agents.network,
+					price, policy: access.policy,
 					url: `${settings.agentRoutePrefix}/${encodeURIComponent(rule.collectionSlug)}/${encodeURIComponent(entry.slug)}.md`,
 				});
 			} catch { /* Unavailable content is not a public offer. */ }
@@ -93,7 +95,7 @@ export async function offersHandler(routeCtx: RouteContext, ctx: PluginContext) 
 		if (rule?.agentPrice && ["agents-pay", "members"].includes(rule.policy)) {
 			items.push({
 				type: "taxonomy", taxonomy: rule.taxonomyName, termId: rule.termId,
-				price: rule.agentPrice, policy: rule.policy, network: settings.agents.network
+				price: rule.agentPrice, policy: rule.policy
 			});
 		}
 	}

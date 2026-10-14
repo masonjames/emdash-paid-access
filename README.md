@@ -136,3 +136,7 @@ with original history and authorship retained. See [NOTICE.md](NOTICE.md).
 Maintained by [Mason James](https://masonjames.com).
 [Contributions](CONTRIBUTING.md) and [bug reports](https://github.com/masonjames/emdash-paid-access/issues)
 are welcome. Send security reports [privately](SECURITY.md).
+
+Discovery offers list policy, price and the read URL. Payment network and destination
+are supplied by that URL’s authoritative 402 challenge, which may use host settings
+different from the legacy companion settings.

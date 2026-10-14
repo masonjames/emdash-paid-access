@@ -67,7 +67,7 @@ describe("agent plugin routes", () => {
 				taxonomy_restrictions: { query: async () => ({ items: [] }) },
 			},
 		};
-		await expect(invoke(offersHandler, ctx)).resolves.toEqual({ items: [{ type: "content", collection: "posts", slug: "paid", title: "Paid post", price: "$0.01", policy: "agents-pay", network: "eip155:84532", url: "/agents/posts/paid.md" }], nextCursor: "content:page-2" });
+		await expect(invoke(offersHandler, ctx)).resolves.toEqual({ items: [{ type: "content", collection: "posts", slug: "paid", title: "Paid post", price: "$0.01", policy: "agents-pay", url: "/agents/posts/paid.md" }], nextCursor: "content:page-2" });
 	});
 
 	it("lists what the agent route sells, once, at the price it charges", async () => {
@@ -95,7 +95,7 @@ describe("agent plugin routes", () => {
 			settings: { get: kvGet },
 			storage: { restrictions: { query: vi.fn() }, taxonomy_restrictions: { query } },
 		};
-		await expect(invoke(offersHandler, ctx)).resolves.toEqual({ items: [{ type: "taxonomy", taxonomy: "tag", termId: "premium", price: "$0.05", policy: "members", network: "eip155:84532" }], nextCursor: "taxonomy:more" });
+		await expect(invoke(offersHandler, ctx)).resolves.toEqual({ items: [{ type: "taxonomy", taxonomy: "tag", termId: "premium", price: "$0.05", policy: "members" }], nextCursor: "taxonomy:more" });
 		expect(query).toHaveBeenCalledWith({ limit: 2, cursor: "prior" });
 		const draft = { ...ctx, request: new Request("https://site.test/offers"), content: { get: async () => ({ status: "draft", slug: "hidden", data: { title: "Hidden" } }) },
 			storage: { restrictions: { query: async () => ({ items: [{ data: { contentId: "secret", collectionSlug: "posts", policy: "agents-pay", agentPrice: "$0.01", createdAt: "2026-09-29" } }] }) }, taxonomy_restrictions: { query: async () => ({ items: [] }) } } };
