@@ -10,6 +10,11 @@ export interface PaidAccessOptions {
 	/** Requires host readerProtection bindings and emdash/reader-access support. */
 	readerProtection?: boolean;
 	hostPayments?: boolean;
+	/** Reader decision deadline in milliseconds (100–10000). */
+	entitlementTimeoutMs?: number;
+	/** Per-process paid-route admission limits. */
+	paymentMaxConcurrent?: number;
+	paymentRequestsPerMinute?: number;
 	collections?: string[];
 	agentRoutePrefix?: string;
 	accountPath?: string;
@@ -18,7 +23,7 @@ export interface PaidAccessOptions {
 	legacyPluginId?: string;
 }
 export function resolveOptions(input: PaidAccessOptions = {}): Required<PaidAccessOptions> {
-	const options = { hostPayments: false, readerProtection: false, collections: ["posts"], agentRoutePrefix: "/agents", accountPath: "/account", injectAccountRoutes: true,
+	const options = { entitlementTimeoutMs: 1500, paymentMaxConcurrent: 8, paymentRequestsPerMinute: 120, hostPayments: false, readerProtection: false, collections: ["posts"], agentRoutePrefix: "/agents", accountPath: "/account", injectAccountRoutes: true,
 		facilitatorUrl: TEST_FACILITATOR_URL, legacyPluginId: LEGACY_PLUGIN_ID, ...input };
 	for (const key of ["agentRoutePrefix", "accountPath"] as const) {
 		const path = options[key];
@@ -28,6 +33,9 @@ export function resolveOptions(input: PaidAccessOptions = {}): Required<PaidAcce
 	}
 	if (!Array.isArray(options.collections) || !options.collections.length || options.collections.some(value => typeof value !== "string" || !value.trim())) {
 		throw new Error("Paid Access collections must contain non-empty strings.");
+	}
+	for (const [key, min, max] of [["entitlementTimeoutMs", 100, 10000], ["paymentMaxConcurrent", 1, 64], ["paymentRequestsPerMinute", 1, 6000]] as const) {
+		if (!Number.isInteger(options[key]) || options[key] < min || options[key] > max) throw new Error(`Paid Access ${key} must be an integer from ${min} to ${max}.`);
 	}
 	let facilitator: URL;
 	try { facilitator = new URL(options.facilitatorUrl); }

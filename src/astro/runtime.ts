@@ -105,7 +105,7 @@ export function createPaidAccess(locals: PluginLocals, request: Request, session
 	}
 	function memoizedAccess(input: AccessInput): Promise<HumanDecision> {
 		const key = accessKey(input);
-		if (!memo.has(key)) memo.set(key, bounded(access(input), failClosedHumanDecision()));
+		if (!memo.has(key)) memo.set(key, bounded(access(input), failClosedHumanDecision(), options.entitlementTimeoutMs));
 		return memo.get(key)!;
 	}
 	// One entitlements call per request, however many segments() calls there are. Rejects on any doubt.
@@ -123,7 +123,7 @@ export function createPaidAccess(locals: PluginLocals, request: Request, session
 	const segmentMemo = new Map<string, Promise<string[]>>();
 	async function segments(entry?: AccessInput): Promise<string[]> {
 		try {
-			const [reader, decision] = await Promise.all([readerSegments ??= bounded<string[] | null>(readReaderSegments(), null).then(value => { if (value === null) throw new Error("Entitlements unavailable"); return value; }), entry ? memoizedAccess(entry) : undefined]);
+			const [reader, decision] = await Promise.all([readerSegments ??= bounded<string[] | null>(readReaderSegments(), null, options.entitlementTimeoutMs).then(value => { if (value === null) throw new Error("Entitlements unavailable"); return value; }), entry ? memoizedAccess(entry) : undefined]);
 			// An entry decision that couldn't be verified fails the whole answer closed.
 			if (decision?.error) return [];
 			return [...new Set([...reader, ...(decision && canRenderBody(decision) ? ["entitled"] : [])])].sort();
@@ -145,7 +145,7 @@ export function createPaidAccess(locals: PluginLocals, request: Request, session
 	}
 	function readerAccess(resource: AccessInput & { locale: string; revision: string }) {
 		const key = accessKey(resource);
-		if (!groupMemo.has(key)) groupMemo.set(key, bounded(groupAccess(resource), failClosedHumanDecision()));
+		if (!groupMemo.has(key)) groupMemo.set(key, bounded(groupAccess(resource), failClosedHumanDecision(), options.entitlementTimeoutMs));
 		return groupMemo.get(key)!;
 	}
 	return {
@@ -191,10 +191,10 @@ export function createPaidAccess(locals: PluginLocals, request: Request, session
 export type PaidAccessLocals = ReturnType<typeof createPaidAccess>;
 declare global { namespace App { interface Locals { paidAccess: PaidAccessLocals } } }
 
-async function bounded<T>(pending: Promise<T>, fallback: T): Promise<T> {
+async function bounded<T>(pending: Promise<T>, fallback: T, timeoutMs: number): Promise<T> {
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	try {
-		return await Promise.race([pending, new Promise<T>(resolve => { timer = setTimeout(() => resolve(fallback), 1500); })]);
+		return await Promise.race([pending, new Promise<T>(resolve => { timer = setTimeout(() => resolve(fallback), timeoutMs); })]);
 	} catch { return fallback; }
 	finally { clearTimeout(timer); }
 }

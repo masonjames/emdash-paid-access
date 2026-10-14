@@ -58,6 +58,11 @@
       "types": "./dist/astro/reader-middleware.d.mts",
       "import": "./dist/astro/reader-middleware.mjs",
       "default": "./dist/astro/reader-middleware.mjs"
+    },
+    "./preflight": {
+      "types": "./dist/astro/preflight.d.mts",
+      "import": "./dist/astro/preflight.mjs",
+      "default": "./dist/astro/preflight.mjs"
     }
   },
   "peerDependencies": {

@@ -25,3 +25,10 @@ it.each(["not-a-url", "http://facilitator.test", "https://user:pass@facilitator.
 it("normalizes the facilitator URL", () => {
  expect(resolveOptions({ facilitatorUrl: "https://x402.org/facilitator/" }).facilitatorUrl).toBe("https://x402.org/facilitator");
 });
+
+it.each(["entitlementTimeoutMs", "paymentMaxConcurrent", "paymentRequestsPerMinute"] as const)("validates %s", key => {
+ for (const value of [0, -1, 0.5, NaN, Infinity, 10001]) expect(() => resolveOptions({ [key]: value })).toThrow(key);
+});
+it("accepts explicit reader and admission budgets", () => {
+ expect(resolveOptions({ entitlementTimeoutMs: 3000, paymentMaxConcurrent: 4, paymentRequestsPerMinute: 60 })).toMatchObject({ entitlementTimeoutMs: 3000, paymentMaxConcurrent: 4, paymentRequestsPerMinute: 60 });
+});

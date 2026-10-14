@@ -8,7 +8,7 @@ import { StripeClient } from "../src/stripe.js";
 import { invoke } from "./fixtures/route.js";
 
 beforeEach(() => { resetRuntimeForTests(); resetCoexistenceCacheForTests(); });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 const en = { id: "english", slug: "original", locale: "en" };
 const fr = { id: "french", slug: "copied", locale: "fr" };
 const resource = { collection: "posts", ...fr, revision: "v1" };
@@ -90,4 +90,14 @@ it("preserves known legacy records with explicit membership requirements", async
 });
 it.each([null, { translationGroup: "", translations: [en, fr] }, { translationGroup: "work", translations: [en] }, { translationGroup: "work", translations: [en, { ...fr, locale: null }] }])("denies unavailable or incomplete translation-group metadata: %j", async entries => {
 	expect(await setup({ entries: entries === null ? { translationGroup: "work", translations: [] } : entries }).api.readerProvider().decide(resource)).toBe("deny");
+});
+
+it("honors the configured provider deadline and fails closed", async () => {
+ vi.useFakeTimers();
+ const pending = new Promise<never>(() => {});
+ const api = createPaidAccess({ emdash: { handlePluginApiRoute: () => pending, handlePublicPluginApiRoute: () => pending } }, new Request("https://reader.test/"), null, resolveOptions({ entitlementTimeoutMs: 250 }));
+ const decision = api.readerProvider().decide(resource);
+ let done = false; void decision.then(() => { done = true; });
+ await vi.advanceTimersByTimeAsync(249); expect(done).toBe(false);
+ await vi.advanceTimersByTimeAsync(1); expect(await decision).toBe("deny");
 });

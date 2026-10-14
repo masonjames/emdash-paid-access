@@ -13,7 +13,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
 			// Both the native alias and generic HTTP route need the same coexistence
 			// check before any free quote can bypass the human reader provider.
 			await context.locals.paidAccess.detectLegacy();
-			context.locals.pluginPayments = { ...context.locals.pluginPayments, "paid-access/agent/read": { adapter: context.locals.pluginPaymentAdapter, provider: "paid-access", collections: options.collections } };
+			context.locals.pluginPayments = { ...context.locals.pluginPayments, "paid-access/agent/read": { adapter: context.locals.pluginPaymentAdapter, provider: "paid-access", collections: options.collections, limits: { maxConcurrent: options.paymentMaxConcurrent, requestsPerMinute: options.paymentRequestsPerMinute } } };
 		} catch {
 			// No registration means unavailable paid reads; public pages can still run.
 			if (context.locals.pluginPayments) delete context.locals.pluginPayments["paid-access/agent/read"];
