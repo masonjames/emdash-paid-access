@@ -120,10 +120,8 @@ export async function editorPanel(route: RouteContext, ctx: PluginContext): Prom
 	const machine = neverFree && effective.policy === "public" ? "Not offered (free reads disabled)"
 		: effective.agent === "granted" ? "Free copy" : effective.agent === "payment-required" ? `Paid copy · ${highestAgentPrice(rules) ?? "price missing"} per read` : "Not offered";
 	const blocks: Block[] = [
-		{ type: "fields", fields: [
-			{ label: "Website access", value: delegated ? "Controlled by Restrict With Stripe" : memberPolicies.includes(effective.policy) ? "Members only" : "Public" },
-			{ label: "Configured machine-readable read", value: machine },
-		] },
+		context(`Website access: ${delegated ? "Controlled by Restrict With Stripe" : memberPolicies.includes(effective.policy) ? "Members only" : "Public"}`),
+		context(`Machine-readable copy (saved policy): ${machine}`),
 		context("Stored policy · cache activation unverified."),
 	];
 	const details: Block[] = [

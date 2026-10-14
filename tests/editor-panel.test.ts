@@ -44,7 +44,7 @@ describe("native complete policy form", () => {
 		await ctx.storage.taxonomy_restrictions.put("category:premium", { taxonomyName: "category", termId: "premium", policy: "members-only" });
 		const inherited = await load(ctx);
 		expect(JSON.stringify(inherited)).toContain("Inherited from category:premium");
-		expect(inherited.blocks[0]).toMatchObject({ fields: expect.arrayContaining([{ label: "Website access", value: "Members only" }, { label: "Configured machine-readable read", value: "Not offered" }]) });
+		expect(inherited.blocks).toEqual(expect.arrayContaining([{ type: "context", text: "Website access: Members only" }, { type: "context", text: "Machine-readable copy (saved policy): Not offered" }]));
 		const del = vi.spyOn(ctx.storage.restrictions, "compareAndDelete");
 		await save(ctx, inherited, { preset: "defaults" });
 		expect(await get(ctx)).toBeNull(); expect(del).toHaveBeenCalledTimes(1);
