@@ -1,11 +1,12 @@
 # Paid Access documentation
 
 Paid Access combines a standard-format EmDash core with an Astro companion.
-The public npm beta is `0.1.0-beta.2` ([verification](releases/0.1.0-beta.2.md));
-the EmDash registry remains unpublished.
-The installation guide covers npm and building from source. The
-[live demo](https://masonjames.com/blog/paid-access-demo/) uses Stripe memberships
-for people and Base Sepolia test USDC for agents.
+This source revision's native membership integration is a local candidate, not
+published or deployed. It requires the matching reviewed core and host setup.
+The recorded npm beta, `0.1.0-beta.2`
+([historical verification](releases/0.1.0-beta.2.md)), and existing demo do not
+qualify this candidate. The installation guide distinguishes that beta from
+building an exact source revision.
 
 ## Set up a site
 
@@ -16,7 +17,7 @@ for people and Base Sepolia test USDC for agents.
 4. Verify [hosting, public content surfaces, and caching](guides/hosting-and-caching.md).
 
 Already running Restrict With Stripe? Start with
-[coexistence and migration](guides/migration.md) before changing member access.
+[the offline migration guide](guides/migration.md) before changing member access.
 
 Building pages in a visual builder? See [visual builders](guides/visual-builders.md)
 for audience segments, teasers, page rules, and pricing.

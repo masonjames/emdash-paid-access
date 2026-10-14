@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 import { describe, expect, it } from "vitest";
-import { coexistenceReport } from "../src/admin/index.js";
 import { settingsHandler } from "../src/handlers/settings.js";
 import { invoke } from "./fixtures/route.js";
 import { action, admin, fixture, flatten, page, paid, submit } from "./fixtures/admin.js";
@@ -40,7 +39,8 @@ describe("settings screens", () => {
 		await admin(ctx, submit("plans:save:all-access", { ...values, slug: "tampered", name: "Updated" }));
 		expect(ctx.settings.data.get("humansPlans")).toMatchObject([{ slug: "all-access", name: "Updated" }]);
 		const confirmation = await admin(ctx, action("plans:menu:all-access", "remove"));
-		expect(JSON.stringify(confirmation)).toContain("Remove this plan?"); expect(ctx.settings.data.get("humansPlans")).toHaveLength(1);
+		expect(JSON.stringify(confirmation)).toContain("Remove this plan?");
+		expect(JSON.stringify(confirmation)).toContain("Posts that require this plan will be locked for everyone until their rules are updated."); expect(ctx.settings.data.get("humansPlans")).toHaveLength(1);
 		await admin(ctx, action("plans:remove:all-access")); expect(ctx.settings.data.get("humansPlans")).toEqual([]);
 	});
 	it("disconnects through the deliberate confirmed button", async () => {
@@ -53,18 +53,18 @@ describe("settings screens", () => {
 		await admin(ctx, submit("settings:agents:save", {})); expect(ctx.settings.data.get("agentsMode")).toBe("tokens-only");
 		const off = fixture(); expect((await admin(off, submit("settings:agents:save", { agents_mode: "tokens-only" }))).toast?.type).toBe("error");
 	});
-	it("stores the private runtime hint and refuses Stripe on both admin and shared settings paths", async () => {
-		const ctx = fixture(); const request = new Request("https://site.test/", { method: "POST" });
-		expect(await invoke(coexistenceReport, { ...ctx, request, input: { legacyPluginPresent: "true" } })).toMatchObject({ ok: false });
-		expect(await invoke(coexistenceReport, { ...ctx, request, input: { legacyPluginPresent: true } })).toEqual({ ok: true, humanMode: "off" });
-		const screen = await admin(ctx, page("/settings")); expect(JSON.stringify(screen)).toContain("Restrict With Stripe is active");
-		const radio = flatten(screen.blocks).filter(b => b.type === "form").flatMap(b => b.fields).find(f => f.action_id === "humans_mode");
-		expect(radio).toMatchObject({ options: [{ value: "off" }, { value: "delegate" }] });
-		expect((await admin(ctx, submit("settings:members:save", { humans_mode: "stripe" }))).toast?.message).toContain("Use delegate mode");
-		expect(await invoke(settingsHandler, { ...ctx, request, input: { humans: { mode: "stripe", plans: [] } } })).toMatchObject({ ok: false });
-		expect(ctx.settings.data.size).toBe(0);
-		await invoke(coexistenceReport, { ...ctx, request, input: { legacyPluginPresent: false } });
-		expect((await admin(ctx, submit("settings:members:save", { humans_mode: "stripe" }))).toast?.type).toBe("success");
+	it("keeps migration-required explicit without offering delegation or changing stored data", async () => {
+		for (const mode of ["delegate", "migration-required"]) {
+			const ctx = fixture({ humansMode: mode, humansPlans: [{ slug: "supporter", name: "Supporter", stripeProductId: "prod_one", grantsVisibility: [] }] });
+			const before = [...ctx.settings.data];
+			const screen = await admin(ctx, page("/settings"));
+			expect(JSON.stringify(screen)).toContain("Member access needs migration");
+			const radio = flatten(screen.blocks).filter(b => b.type === "form").flatMap(b => b.fields).find(f => f.action_id === "humans_mode");
+			expect(radio).toBeUndefined();
+			expect([...ctx.settings.data]).toEqual(before);
+			expect((await admin(ctx, submit("settings:members:save", { humans_mode: "stripe" }))).toast?.type).toBe("success");
+			expect([...ctx.settings.data]).toEqual(before);
+		}
 	});
 });
 
@@ -79,9 +79,28 @@ it("renders with no products or a missing saved product, and supports block_id d
 	expect(JSON.stringify(await admin(ctx, action("plans:menu:old", "edit")))).toContain("prod_removed (saved product)");
 });
 
-it("renders a previously enabled Stripe mode after a legacy runtime report", async () => {
-	const ctx = fixture({ humansMode: "stripe" }); await ctx.kv.set("state:legacyPluginPresent", true);
-	expect(JSON.stringify(await admin(ctx, page("/settings")))).toContain("Use migration mode");
+it.each(["off", "stripe"])("locks historical %s delegation markers while allowing key/excerpt saves", async humansMode => {
+	const plans = [{ slug: "supporter", name: "Supporter", stripeProductId: "prod_one", grantsVisibility: [] }];
+	const ctx = fixture({ humansMode, humansPlans: plans });
+	await ctx.kv.set("state:legacyPluginPresent", true);
+	const screen = await admin(ctx, page("/settings"));
+	expect(JSON.stringify(screen)).toContain("Member access needs migration");
+	expect(JSON.stringify(screen)).not.toContain("Add a plan");
+	const fields = flatten(screen.blocks).filter(b => b.type === "form").flatMap(b => b.fields);
+	expect(fields.find(f => f.action_id === "humans_mode")).toBeUndefined();
+	expect(fields.find(f => f.action_id === "stripe_secret_key")?.condition).toBeUndefined();
+	for (const values of [{ stripe_secret_key: "sk_test_example" }, { humans_mode: "off", show_excerpts: false }, { humans_mode: "stripe", show_excerpts: true }]) {
+		expect((await admin(ctx, submit("settings:members:save", values))).toast?.type).toBe("success");
+		expect(ctx.settings.data.get("humansMode")).toBe(humansMode);
+		expect(ctx.settings.data.get("humansPlans")).toEqual(plans);
+		expect(await ctx.kv.get("state:legacyPluginPresent")).toBe(true);
+	}
+	expect(ctx.settings.data.get("stripeSecretKey")).toBe("sk_test_example");
+	expect(ctx.settings.data.get("showExcerpts")).toBe(true);
+	for (const input of [submit("plans:add", { slug: "new", name: "New", product: "prod_new" }), action("plans:remove:supporter")]) {
+		expect((await admin(ctx, input)).toast?.type).toBe("error");
+		expect(ctx.settings.data.get("humansPlans")).toEqual(plans);
+	}
 });
 
 it("rejects Gateway even with a trust value, while letting saved configurations recover", async () => {
@@ -99,16 +118,16 @@ it("rejects Gateway even with a trust value, while letting saved configurations 
  expect(ctx.settings.data.get("agentsRail")).toBe("origin-x402");
 });
 
-it("identifies legacy wallet settings without claiming host payment configuration", async () => {
+it("identifies companion wallet settings without claiming host payment configuration", async () => {
  const ctx = fixture(paid);
  const result = JSON.stringify(await admin(ctx, page("/settings")));
- expect(result).toContain("Legacy companion network (ignored by host-managed payments)");
+ expect(result).toContain("Companion network (ignored by host-managed payments)");
  expect(result).toContain("host challenge is authoritative");
  expect(result).toContain("unavailable, never free");
  expect(result).toContain("Production activation remains pending cache proof");
 });
 
-it("does not report a missing legacy wallet as a host payment failure", async () => {
+it("does not report a missing companion wallet as a host payment failure", async () => {
  const ctx = fixture({ ...paid, agentsPayTo: "" });
  const panel = await admin(ctx, page("/settings"));
  const output = JSON.stringify(panel);

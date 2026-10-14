@@ -8,13 +8,13 @@ import { restrictionsHandler } from "../handlers/restrictions.js";
 import { normalizeContentRestriction, normalizeTaxonomyRestriction } from "../restrictions.js";
 import type { PaidAccessSettings, RouteContext } from "../types.js";
 import { isRecord } from "../utils.js";
-import { AGENTS_PAY_WARNING, AdminInputError, allRows, banner, confirmButton, context, form, interaction, loadMore, request, resultToast, ruleFields, ruleHelp, ruleInput, str, summary, textField } from "./shared.js";
+import { AGENTS_PAY_WARNING, MIGRATION_REQUIRED, AdminInputError, allRows, banner, confirmButton, context, form, interaction, link, loadMore, request, resultToast, ruleFields, ruleHelp, ruleInput, str, summary, textField } from "./shared.js";
 
 const PAGE_COLLECTION = "emvb_pages";
 const PAGE_EFFECT = "A page rule takes effect only when the site's route for those pages checks Paid Access.";
 const pageTitle = (entry: { data: Record<string, unknown> }) => typeof entry.data.title === "string" ? entry.data.title : null;
 // Builder pages aren't served to AI agents, so a page rule only restricts people: members only, optionally by plan.
-const offersPlans = (s: PaidAccessSettings) => s.humans.mode !== "delegate" && s.humans.plans.length > 0;
+const offersPlans = (s: PaidAccessSettings) => s.humans.plans.length > 0;
 const pageRuleFields = (s: PaidAccessSettings): FormField[] => offersPlans(s)
 	? [{ type: "checkbox", action_id: "plans", label: "Plans that include it", options: s.humans.plans.map(p => ({ value: p.slug, label: p.name })), initial_value: [] }] : [];
 // The first 100 published entries, or null when the collection can't be read (for example, a mistyped slug).
@@ -25,6 +25,7 @@ async function publishedEntries(ctx: PluginContext, collection: string) {
 
 export async function rulesPage(ctx: PluginContext, cursor?: string, taxonomy?: string, extra: Block[] = [], taxonomyCursor?: string, pageCollection?: string): Promise<BlockResponse> {
 	const s = await loadSettings(ctx);
+	if (s.humans.mode === "migration-required") return { blocks: [{ type: "header", text: "Rules" }, banner(MIGRATION_REQUIRED, "alert"), { type: "actions", elements: [link("Member settings", "/settings")] }] };
 	const all = (await allRows(ctx.storage.restrictions)).flatMap(row => { const r = normalizeContentRestriction(row.data); return r ? [r] : []; });
 	const content = await ctx.storage.restrictions.query({ limit: 25, ...(cursor ? { cursor } : {}) });
 	const taxRules = await ctx.storage.taxonomy_restrictions.query({ limit: 25, ...(taxonomyCursor ? { cursor: taxonomyCursor } : {}) });
@@ -73,6 +74,8 @@ export async function rulesPage(ctx: PluginContext, cursor?: string, taxonomy?: 
 	] };
 }
 export async function rulesInteraction(route: RouteContext, ctx: PluginContext): Promise<BlockResponse> {
+	const current = await loadSettings(ctx);
+	if (current.humans.mode === "migration-required") return { ...(await rulesPage(ctx)), toast: { type: "error", message: MIGRATION_REQUIRED } };
 	const i = interaction(route);
 	if (i.type === "block_action" && i.action === "rules:more") return rulesPage(ctx, str(i.value));
 	if (i.type === "block_action" && i.action === "rules:taxonomy:more") return rulesPage(ctx, undefined, undefined, [], str(i.value));
@@ -93,7 +96,7 @@ export async function rulesInteraction(route: RouteContext, ctx: PluginContext):
 			const terms = await ctx.taxonomies!.getTerms(taxonomy);
 			if (!terms.some(t => t.id === i.values.term)) throw new AdminInputError("Choose a term in this taxonomy, then save again.");
 			const settings = await loadSettings(ctx);
-			const input = ruleInput(i.values, settings.humans.mode === "delegate");
+			const input = ruleInput(i.values);
 			result = await restrictionsHandler(request(route, { ...input, type: "taxonomy", taxonomyName: taxonomy, termId: i.values.term }), ctx);
 			extra = ruleHelp(settings, input.policy).filter(b => b.type === "banner");
 		} else if (i.type === "form_submit" && i.action.startsWith("rules:page:save:")) {

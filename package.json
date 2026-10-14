@@ -63,7 +63,8 @@
       "types": "./dist/astro/preflight.d.mts",
       "import": "./dist/astro/preflight.mjs",
       "default": "./dist/astro/preflight.mjs"
-    }
+    },
+    "./migration-audit": "./scripts/legacy-migration-audit.mjs"
   },
   "peerDependencies": {
     "emdash": "^1.2.0",

@@ -6,17 +6,17 @@ import type { PluginContext } from "emdash/plugin";
 import { loadSettings, settingsHandler } from "../handlers/settings.js";
 import { productsHandler } from "../handlers/products.js";
 import type { RouteContext } from "../types.js";
-import { banner, confirmButton, context, form, interaction, request, resultToast, str, textField } from "./shared.js";
+import { MIGRATION_REQUIRED, banner, confirmButton, context, form, interaction, request, resultToast, str, textField } from "./shared.js";
 
 export async function settingsPage(route: RouteContext, ctx: PluginContext, editSlug?: string, defaultTab = 0, extra: Block[] = []): Promise<BlockResponse> {
 	const s = await loadSettings(ctx);
-	const legacy = await ctx.kv.get("state:legacyPluginPresent") === true;
-	const stripe = { field: "humans_mode", eq: "stripe" };
+	const migration = s.humans.mode === "migration-required";
+	const stripe = migration ? undefined : { field: "humans_mode", eq: "stripe" };
 	const paid = { field: "agents_mode", eq: "paid" };
 	const members: Block[] = [
-		...(legacy ? [context("Restrict With Stripe controls member access while it is active. Use migration mode, or deactivate it before choosing Stripe memberships.")] : []),
+		...(migration ? [{ type: "fields" as const, fields: [{ label: "Charge people", value: "Migration required — mode and plans locked" }] }, context("You can update your Stripe key and excerpt preference here. Only a reviewed offline migration can unlock membership mode and plans; saving these settings does not complete migration.")] : []),
 		form("settings:members:save", "Save member settings", [
-			{ type: "radio", action_id: "humans_mode", label: "Charge people", ...(legacy && s.humans.mode === "stripe" ? {} : { initial_value: s.humans.mode }), options: [{ value: "off", label: "Off" }, ...(!legacy ? [{ value: "stripe", label: "Stripe memberships" }] : []), { value: "delegate", label: "Use Restrict With Stripe (during migration)" }] },
+			...(!migration ? [{ type: "radio" as const, action_id: "humans_mode", label: "Charge people", initial_value: s.humans.mode, options: [{ value: "off", label: "Off" }, { value: "stripe", label: "Stripe memberships" }] }] : []),
 			{ type: "secret_input", action_id: "stripe_secret_key", label: "Stripe secret key", has_value: Boolean(s.stripeSecretKey), condition: stripe },
 			{ ...textField("stripe_publishable_key", "Stripe publishable key", s.stripePublishableKey), condition: stripe },
 			{ type: "toggle", action_id: "show_excerpts", label: "Show an excerpt above the paywall", initial_value: s.showExcerpts },
@@ -46,22 +46,20 @@ export async function settingsPage(route: RouteContext, ctx: PluginContext, edit
 	return { blocks: [
 		{ type: "header", text: "Paid Access" }, context("Charge people with Stripe memberships and AI agents with x402 payments — separately or together."),
 		...(s.humans.mode === "stripe" && !s.emailConfigured ? [banner("Sign-in links can't be sent. Install and configure an email provider plugin, then come back.", "error")] : []),
-		...(legacy ? [banner("Restrict With Stripe is active on this site. Member access is delegated to it until you migrate.", "alert")] : []),
-		...(s.agents.mode !== "off" && (!s.agents.payTo || !s.agents.network) ? [banner("Host-managed payments use the site’s x402 configuration, whose status is unverified here. If you use legacy companion payments, configure their wallet and network below.", "default")] : []),
+		...(s.humans.mode === "migration-required" ? [banner(MIGRATION_REQUIRED, "alert")] : []),
+		...(s.agents.mode !== "off" && (!s.agents.payTo || !s.agents.network) ? [banner("Host-managed payments use the site’s x402 configuration, whose status is unverified here. If you use direct companion payments, configure their wallet and network below.", "default")] : []),
 		{ type: "tab", block_id: `settings:tabs:${defaultTab}`, default_tab: defaultTab, panels: [
 			{ label: "AI agents", blocks: [
 				...(s.agents.mode === "tokens-only" ? [{ type: "fields" as const, fields: [{ label: "Sell to AI agents", value: "Subscriber tokens only" }] }, context("Subscriber tokens only is the saved mode. Leave the choice below unchanged to keep it.")] : []),
 				form("settings:agents:save", "Save agent settings", [
 					{ type: "radio", action_id: "agents_mode", label: "Sell to AI agents", ...(s.agents.mode !== "tokens-only" ? { initial_value: s.agents.mode } : {}), options: [{ value: "off", label: "Off" }, { value: "paid", label: "On — agents pay per read" }] },
-					{ type: "radio", action_id: "agents_network", label: "Legacy companion network (ignored by host-managed payments)", condition: paid, initial_value: s.agents.network || "eip155:84532", options: [{ value: "eip155:84532", label: "Base Sepolia (test USDC)" }, { value: "eip155:8453", label: "Base (real USDC)" }] },
-					{ ...textField("agents_pay_to", "Legacy companion payout wallet (ignored by host-managed payments)", s.agents.payTo, "0x…"), condition: paid },
-					...(s.humans.mode === "delegate" ? [] : [{ type: "toggle" as const, action_id: "agents_free_by_default", label: "Offer free Markdown for posts without a rule", initial_value: s.agents.freeByDefault, condition: paid }]),
+					{ type: "radio", action_id: "agents_network", label: "Companion network (ignored by host-managed payments)", condition: paid, initial_value: s.agents.network || "eip155:84532", options: [{ value: "eip155:84532", label: "Base Sepolia (test USDC)" }, { value: "eip155:8453", label: "Base (real USDC)" }] },
+					{ ...textField("agents_pay_to", "Companion payout wallet (ignored by host-managed payments)", s.agents.payTo, "0x…"), condition: paid },
+					{ type: "toggle", action_id: "agents_free_by_default", label: "Offer free Markdown for posts without a rule", initial_value: s.agents.freeByDefault, condition: paid },
 				]), ...(s.agents.mode === "paid" ? [
-					context("These wallet and network settings apply only to legacy companion payments. Host-managed payments use the host x402 registration, wallet, network and facilitator; the host challenge is authoritative. Ask the site maintainer to check host configuration. Missing host configuration keeps those routes unavailable, never free."),
+					context("These wallet and network settings apply only to direct companion payments. Host-managed payments use the host x402 registration, wallet, network and facilitator; the host challenge is authoritative. Ask the site maintainer to check host configuration. Missing host configuration keeps those routes unavailable, never free."),
 					context("Host payment configuration and cache activation are unverified in this panel. Production activation remains pending cache proof."),
-					s.humans.mode === "delegate"
-						? context("Agents only get posts that have a Paid Access rule, and never for free while Restrict With Stripe decides who can read.")
-						: context("Agents only get posts that have a Paid Access rule. Offering free Markdown for everything else is good for AI search, but leave it off if another plugin or your theme restricts some posts: agents would read those for free."),
+					context("Agents get posts covered by Paid Access rules. Enable free Markdown for other posts only after verifying that they are public on every content route."),
 				] : []),
 				context(`Agents get each post as Markdown at ${s.agentRoutePrefix}/{collection}/{slug}.md and pay with the x402 protocol. People reading your site see no change.`),
 			] },
@@ -83,7 +81,7 @@ export async function settingsInteraction(route: RouteContext, ctx: PluginContex
 	if (type === "block_action" && action.startsWith("plans:menu:")) {
 		const slug = action.slice("plans:menu:".length);
 		if (value === "edit") return settingsPage(route, ctx, slug, 1);
-		if (value === "remove") return settingsPage(route, ctx, undefined, 1, [{ type: "actions", elements: [confirmButton(`plans:remove:${slug}`, "Remove", "Remove this plan?", "Posts that require only this plan will be locked for everyone until you pick another plan.")] }]);
+		if (value === "remove") return settingsPage(route, ctx, undefined, 1, [{ type: "actions", elements: [confirmButton(`plans:remove:${slug}`, "Remove", "Remove this plan?", "Posts that require this plan will be locked for everyone until their rules are updated.")] }]);
 	}
 	let input: Record<string, unknown>;
 	let success: string;
@@ -92,7 +90,7 @@ export async function settingsInteraction(route: RouteContext, ctx: PluginContex
 		if (v.agents_mode === "tokens-only" && s.agents.mode !== "tokens-only") return { ...(await settingsPage(route, ctx)), toast: { type: "error", message: "Choose Off or On — agents pay per read. Subscriber tokens ship later." } };
 		input = { agents: { ...s.agents, mode: v.agents_mode ?? s.agents.mode, network: v.agents_network ?? s.agents.network, payTo: v.agents_pay_to ?? s.agents.payTo, freeByDefault: typeof v.agents_free_by_default === "boolean" ? v.agents_free_by_default : s.agents.freeByDefault } }; success = "Agent settings saved.";
 	} else if (type === "form_submit" && action === "settings:members:save") {
-		input = { humans: { ...s.humans, mode: v.humans_mode }, stripeSecretKey: v.stripe_secret_key, stripePublishableKey: v.stripe_publishable_key, showExcerpts: v.show_excerpts }; success = "Member settings saved."; tab = 1;
+		input = { ...(s.humans.mode === "migration-required" ? {} : { humans: { ...s.humans, mode: v.humans_mode } }), stripeSecretKey: v.stripe_secret_key, stripePublishableKey: v.stripe_publishable_key, showExcerpts: v.show_excerpts }; success = "Member settings saved."; tab = 1;
 	} else if (type === "form_submit" && action === "settings:advanced:save") {
 		input = { agentRoutePrefix: v.agent_route_prefix, accountPath: v.account_path, agents: { ...s.agents, rail: v.rail, edgeTrust: v.edge_trust ?? s.agents.edgeTrust } }; success = "Advanced settings saved."; tab = 2;
 	} else if (type === "block_action" && action === "settings:disconnect") {

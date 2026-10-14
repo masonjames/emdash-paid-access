@@ -6,6 +6,7 @@ import type { PluginContext } from "emdash/plugin";
 import type { AccessPolicy, PaidAccessSettings, RouteContext } from "../types.js";
 import { isRecord } from "../utils.js";
 
+export const MIGRATION_REQUIRED = "Member access needs migration. Ask your site maintainer to complete a reviewed offline migration of the existing rules, plans and customer associations. Stored rules are preserved; membership mode, plans and content-rule editing stay locked until migration is complete. Saving a Stripe key or excerpt preference does not unlock access.";
 export const AGENTS_PAY_WARNING = "The full post stays in this page's HTML, so scrapers can still read it for free. Block unverified bots at your CDN if that matters to you.";
 export const context = (text: string): Block => ({ type: "context", text });
 export const banner = (description: string, variant: "default" | "alert" | "error" = "default"): Block => ({ type: "banner", description, variant });
@@ -47,13 +48,8 @@ export function summary(rule: { policy: AccessPolicy; agentPrice?: string | null
 	const a = answers(rule.policy);
 	return { people: a.people === "members" ? "Members only" : "Anyone", agents: a.agents === "free" ? "Free" : a.agents === "subscribers" ? "Not sold" : `${rule.agentPrice || "Price not set"} per read` };
 }
-// In delegate mode another plugin decides who reads for free, so rules only price agents.
 export function ruleFields(settings: PaidAccessSettings, rule?: { policy: AccessPolicy; agentPrice?: string | null; requiredPlanSlugs?: string[] }): FormField[] {
 	const a = answers(rule?.policy ?? "public");
-	if (settings.humans.mode === "delegate") return [
-		{ type: "radio", action_id: "agents", label: "What do AI agents get?", initial_value: "pay", options: [{ value: "pay", label: "Pay per read (x402, USDC)" }] },
-		{ ...textField("price", "Price per read (USD)", rule?.agentPrice ?? "", "$0.05"), condition: { field: "agents", eq: "pay" } },
-	];
 	return [
 		{ type: "radio", action_id: "people", label: "Who can read it for free?", initial_value: a.people, options: [{ value: "anyone", label: "Anyone" }, { value: "members", label: "Members only" }] },
 		{ type: "radio", action_id: "agents", label: "What about AI agents?", initial_value: a.agents, options: [{ value: "free", label: "Free — they read it as Markdown" }, { value: "pay", label: "Pay per read (x402, USDC)" }, { value: "subscribers", label: "Not sold to agents (members only)" }] },
@@ -66,8 +62,8 @@ export function ruleHelp(settings: PaidAccessSettings, policy?: AccessPolicy): B
 		...(!settings.humans.plans.length && settings.humans.mode === "stripe" ? [context("Add a plan under Paid Access → Settings → Members first.")] : []),
 		...(policy === "agents-pay" ? [banner(AGENTS_PAY_WARNING, "alert")] : [])];
 }
-export function ruleInput(values: Record<string, unknown>, delegated = false) {
-	const policy = policyFromAnswers(delegated ? "anyone" : values.people, values.agents);
+export function ruleInput(values: Record<string, unknown>) {
+	const policy = policyFromAnswers(values.people, values.agents);
 	return { policy, agentPrice: values.agents === "pay" ? values.price : null, requiredPlanSlugs: values.people === "members" ? values.plans ?? [] : [], productIds: [] };
 }
 export async function allRows(collection: PluginContext["storage"][string]) {

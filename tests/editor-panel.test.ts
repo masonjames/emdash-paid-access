@@ -114,42 +114,41 @@ describe("native complete policy form", () => {
 			const before = [...ctx.storage.restrictions.data];
 			const blocked = await save(ctx, panel, { preset: "defaults" });
 			expect(blocked.blocks.some(b => b.type === "form")).toBe(false);
-			expect(JSON.stringify(blocked)).toContain("merge the older rules");
+			expect(JSON.stringify(blocked)).toContain("merge it with the entry-ID rule");
 			expect([...ctx.storage.restrictions.data]).toEqual(before);
 		}
 	});
 
-	it("delegates website access and refuses all unsupported presets server-side", async () => {
-		const ctx = fixture({ ...paid, humansMode: "delegate" });
-		const panel = await load(ctx);
-		expect(currentPreset(panel)).toMatchObject({ options: [{ value: "defaults", label: "Use defaults" }, { value: "agents-pay", label: "Paid machine-readable copy" }] });
-		expect(JSON.stringify(panel)).toContain("Restrict With Stripe");
-		for (const preset of ["public", "members", "members-only", "none"]) expect((await save(ctx, panel, { preset })).toast?.type).toBe("error");
-		await save(ctx, panel, { preset: "agents-pay", "price_agents-pay": "0.01" });
-		expect(await get(ctx)).toMatchObject({ policy: "agents-pay", requiredPlanSlugs: [] });
-		await ctx.storage.restrictions.put("posts:1", { ...rule, policy: "public", agentPrice: null });
-		expect(JSON.stringify(await load(ctx))).toContain("Not offered (free reads disabled)");
-	});
-
-	it("refuses delegated edits that could erase existing website restrictions", async () => {
-		for (const restriction of [{ policy: "members", requiredPlanSlugs: ["premium"] }, { policy: "members-only" }, { policy: "agents-pay", productIds: ["prod_legacy"] }]) {
-			const ctx = fixture({ ...paid, humansMode: "delegate" });
+	it("keeps every native preset read-only until migration is complete", async () => {
+		for (const restriction of [undefined, { policy: "public" }, { policy: "members", requiredPlanSlugs: ["premium"] }, { policy: "members-only" }, { policy: "agents-pay" }]) {
+			const ctx = fixture(paid);
+			const stalePanel = await load(ctx);
+			if (restriction) await ctx.storage.restrictions.put("posts:1", { ...rule, ...restriction });
+			await ctx.storage.taxonomy_restrictions.put("category:premium", { taxonomyName: "category", termId: "premium", policy: "members-only" });
+			await ctx.settings.set("humansMode", "delegate");
+			const before = [...ctx.storage.restrictions.data];
 			const panel = await load(ctx);
-			await ctx.storage.restrictions.put("posts:1", { ...rule, ...restriction });
-			const before = await get(ctx);
-			for (const preset of ["defaults", "agents-pay"]) {
-				const result = await save(ctx, panel, { preset, "price_agents-pay": "0.01" });
-				expect(result.toast?.message).toContain("could change website access");
+			expect(panel.blocks.some(b => b.type === "form")).toBe(false);
+			expect(JSON.stringify(panel)).toContain("Member access needs migration");
+			for (const preset of ["defaults", "public", "agents-pay", "members", "members-only"]) {
+				const result = await save(ctx, stalePanel, { preset, "price_agents-pay": "0.01", plans_members: ["premium"] });
+				expect(result.toast?.message).toContain("Member access needs migration");
 				expect(result.blocks.some(b => b.type === "form")).toBe(false);
-				expect(await get(ctx)).toEqual(before);
+				expect([...ctx.storage.restrictions.data]).toEqual(before);
 			}
 		}
 	});
 
-	it("revalidates changed provider settings and never-free coexistence", async () => {
-		const ctx = fixture(paid); const panel = await load(ctx);
+	it.each(["off", "stripe"])("locks a stale editor when historical %s delegation is discovered", async humansMode => {
+		const ctx = fixture({ ...paid, humansMode }); const panel = await load(ctx);
 		await ctx.kv.set("state:legacyPluginPresent", true);
 		expect((await save(ctx, panel, { preset: "public" })).toast?.type).toBe("error");
+		expect(await get(ctx)).toBeNull();
+		expect(JSON.stringify(await load(ctx))).toContain("Member access needs migration");
+	});
+
+	it("revalidates actual provider changes before saving a stale form", async () => {
+		const ctx = fixture(paid); const panel = await load(ctx);
 		await ctx.settings.set("agentsMode", "off");
 		expect((await save(ctx, panel, { preset: "agents-pay", "price_agents-pay": "0.01" })).toast?.type).toBe("error");
 		expect(await get(ctx)).toBeNull();

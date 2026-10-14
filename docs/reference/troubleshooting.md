@@ -33,7 +33,9 @@ signatures, and private keys out of screenshots and logs shared for support.
 | Trial label does not create a trial | This beta does not set Checkout trial parameters |
 | Portal fails | Check the session, linked customer, and Stripe portal configuration |
 | Canceled subscriber retains access | Check other matching products and eligible paid standalone invoices; entitlement is not session expiry |
-| Own Stripe mode cannot be enabled | Use delegation while Restrict With Stripe is active |
+| Migration required banner or locked rules | A stored delegate mode or historical Paid Access delegation marker requires reviewed offline migration of rules, plans and customer associations; key/excerpt saves do not unlock it |
+| Plans display but Checkout is unavailable | Check each plan's `checkoutEnabled` readiness, native Stripe configuration, and email provider; display labels alone do not enable Checkout |
+| Old member cookie no longer signs in | Paid Access does not bridge another plugin's sessions; use a fresh Paid Access magic link after migration |
 
 See [Stripe setup and entitlement semantics](../guides/stripe-memberships.md).
 
@@ -47,7 +49,7 @@ See [Stripe setup and entitlement semantics](../guides/stripe-memberships.md).
 | 401 with old settings | Saved Gateway configuration is unsupported; select the origin rail |
 | 503 | Price, public payout address, network, compatible facilitator, x402 middleware, and core availability |
 | Base mainnet fails before payment | Default facilitator is deliberately blocked for Base; configure a compatible production endpoint and rebuild |
-| Free Markdown disappears with legacy plugin | Free agent reads are suppressed while legacy protection is active |
+| Agent reads fail during migration | Historical delegation settings or the stored delegation marker require an explicit offline migration; no content is served while migration is required |
 | Offer price looks stale | Offers cache publicly for up to five minutes; the purchase route resolves current rules |
 | Paid read has no matching receipt | Settlement can succeed before storage fails; inspect sanitized server errors and reconcile the transaction |
 | Test receipts do not appear in revenue | Select Base Sepolia in Receipts; overview revenue deliberately excludes test USDC |
@@ -63,8 +65,11 @@ membership does not grant either permission. If a public rule appears ignored,
 check inherited taxonomy rules and their [precedence](access-policies.md#combining-rules).
 
 Changes to route prefixes must match in admin and `paidAccessAstro`, followed by
-a site rebuild. Restart the process after adding/removing the legacy plugin to
-refresh cached presence.
+a site rebuild. There is no legacy-plugin presence cache to refresh.
+
+Old slug-keyed rules in Paid Access's own storage are separate from membership
+plugin migration. Review and merge them with entry-ID rules before editing;
+do not delete them to clear the editor warning.
 
 ## Ask for help
 

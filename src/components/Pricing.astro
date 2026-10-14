@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 interface Props { redirect: string }
 const { redirect } = Astro.props;
-const plans = await Astro.locals.paidAccess.plans();
+const plans = (await Astro.locals.paidAccess.plans()).filter(plan => plan.checkoutEnabled === true);
 const { accountPath } = Astro.locals.paidAccess.options;
 ---
 {plans.length > 0 && <div class="phb-pricing" data-phb-state="pricing">

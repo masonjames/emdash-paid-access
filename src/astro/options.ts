@@ -1,7 +1,6 @@
 // Copyright 2026 Mason James.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-import { LEGACY_PLUGIN_ID } from "../coexistence.js";
 import { sanitizeRedirectPath } from "../utils.js";
 
 export const TEST_FACILITATOR_URL = "https://x402.org/facilitator";
@@ -20,11 +19,10 @@ export interface PaidAccessOptions {
 	accountPath?: string;
 	injectAccountRoutes?: boolean;
 	facilitatorUrl?: string;
-	legacyPluginId?: string;
 }
 export function resolveOptions(input: PaidAccessOptions = {}): Required<PaidAccessOptions> {
 	const options = { entitlementTimeoutMs: 1500, paymentMaxConcurrent: 8, paymentRequestsPerMinute: 120, hostPayments: false, readerProtection: false, collections: ["posts"], agentRoutePrefix: "/agents", accountPath: "/account", injectAccountRoutes: true,
-		facilitatorUrl: TEST_FACILITATOR_URL, legacyPluginId: LEGACY_PLUGIN_ID, ...input };
+		facilitatorUrl: TEST_FACILITATOR_URL, ...input };
 	for (const key of ["agentRoutePrefix", "accountPath"] as const) {
 		const path = options[key];
 		if (typeof path !== "string" || sanitizeRedirectPath(path, "") !== path || !path.startsWith("/") || path.endsWith("/") || path.includes("..") || /[?#%\[\]\s]/.test(path)) {

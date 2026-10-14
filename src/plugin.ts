@@ -5,7 +5,7 @@
 
 import { paidReadQuote, paidReadHandler, paidReadReceipt } from "./handlers/paid-read.js";
 import { readerGroupHandler } from "./handlers/reader-group.js";
-import { adminHandler, editorHandler, coexistenceReport } from "./admin/index.js";
+import { adminHandler, editorHandler } from "./admin/index.js";
 
 import type { SandboxedPlugin } from "emdash/plugin";
 import type { PageMetadataContribution } from "emdash";
@@ -31,6 +31,7 @@ function humansStripeOnly(handler: RouteHandler): RouteHandler {
 function anyModule(handler: RouteHandler): RouteHandler {
 	return async (routeCtx, ctx) => {
 		const settings = await loadSettings(ctx);
+		if (settings.humans.mode === "migration-required") return routeError("UNAVAILABLE", "Complete the membership migration before changing access rules.");
 		return settings.agents.mode !== "off" || settings.humans.mode !== "off"
 			? handler(routeCtx, ctx) : routeError("MODULE_DISABLED", "Paid Access modules are disabled.");
 	};
@@ -50,6 +51,7 @@ const plugin: SandboxedPlugin = {
 				const rules = await getEntryRestrictions(ctx, collection, id, slug);
 				if (!rules.length) return null;
 				const settings = await loadSettings(ctx);
+				if (settings.humans.mode === "migration-required") return null;
 				const contributions: PageMetadataContribution[] = [];
 				if (settings.agents.mode !== "off" && slug && !rules.some(({ policy }) => policy === "members-only")) {
 					// EmDash 1.0.1 link contributions have no MIME type field.
@@ -78,8 +80,7 @@ const plugin: SandboxedPlugin = {
 		admin: { methods: ["POST"], permission: "plugins:manage", handler: adminHandler },
 		// Whoever may publish any post may set its rule; every other private route explicitly requires plugins:manage.
 		"editor/paid-access": { methods: ["POST"], permission: "content:publish_any", handler: editorHandler },
-		"coexistence/report": { methods: ["POST"], permission: "plugins:manage", handler: coexistenceReport },
-		// Answers in every human mode, so the companion can tell off from delegate.
+		// Membership state is owned exclusively by Paid Access.
 		entitlements: { methods: ["POST"], permission: "plugins:manage", handler: memberEntitlementsHandler },
 		checkout: { methods: ["POST"], public: true, handler: humansStripeOnly(checkoutHandler) },
 		"checkout/complete": { methods: ["POST"], public: true, handler: humansStripeOnly(checkoutCompleteHandler) },
@@ -97,7 +98,7 @@ const plugin: SandboxedPlugin = {
 		"auth/send-link": { methods: ["POST"], public: true, handler: humansStripeOnly(sendLinkHandler) },
 		"auth/verify": { methods: ["POST"], public: true, handler: humansStripeOnly(verifyHandler) },
 		"auth/session": { methods: ["POST"], public: true, handler: humansStripeOnly(sessionHandler) },
-		"auth/logout": { methods: ["POST"], public: true, handler: humansStripeOnly(logoutHandler) },
+		"auth/logout": { methods: ["POST"], public: true, handler: logoutHandler },
 		// Phase 3c: runtime.handlePluginApiRoute("paid-access", "POST", path, request)
 		// invokes private routes without a user; HTTP dispatcher authentication remains required.
 		"agent/context": { methods: ["POST"], permission: "plugins:manage", handler: agentContextHandler },

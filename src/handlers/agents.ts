@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 
+import { isEmailReady } from "./auth.js";
 import { readTranslationGroup } from "./reader-group.js";
 import type { PluginContext } from "emdash/plugin";
 import type { RouteContext, PaidAccessSettings } from "../types.js";
@@ -33,6 +34,7 @@ export async function entitlementHandler(routeCtx: RouteContext, ctx: PluginCont
 	if (!entry.collectionSlug || !entry.contentId) return routeError("BAD_REQUEST", "collection and contentId are required.");
 	try {
 		const settings = await loadSettings(ctx);
+		if (settings.humans.mode === "migration-required") return routeError("UNAVAILABLE", "Complete the membership migration before enabling access.");
 		const { rules, freeByDefault } = await forAgents(ctx, settings, await getEntryRestrictions(ctx, entry.collectionSlug, entry.contentId, entry.slug));
 		const result = resolveAccess({
 			policies: rules.map((rule) => rule.policy),
@@ -53,8 +55,9 @@ export async function offersHandler(routeCtx: RouteContext, ctx: PluginContext) 
 	const cursor = typeof input.cursor === "string" ? input.cursor : "";
 	const taxonomyPage = cursor.startsWith("taxonomy:");
 	const settings = await loadSettings(ctx);
+	if (settings.humans.mode === "migration-required") return routeError("UNAVAILABLE", "Complete the membership migration before enabling access.");
 	// Network and payout destination come from the serving route's 402 challenge,
-	// not legacy plugin settings: host-managed routes may use different configuration.
+	// not the plugin settings: host-managed routes may use different configuration.
 	// Only paid mode sells anything.
 	if (settings.agents.mode !== "paid") return { items: [], nextCursor: null };
 	const items: Array<Record<string, string>> = [];
@@ -119,6 +122,7 @@ export async function agentContextHandler(routeCtx: RouteContext, ctx: PluginCon
 		(input.slug != null && typeof input.slug !== "string")) return routeError("BAD_REQUEST", "collection and contentId are required; slug must be a string.");
 	try {
 		const settings = await loadSettings(ctx);
+		if (settings.humans.mode === "migration-required") return routeError("UNAVAILABLE", "Complete the membership migration before enabling access.");
 		const restrictions = input.readerProtection === true
 			? (await Promise.all((await readTranslationGroup(ctx, input.collection, input.contentId)).translations.map(item => getEntryRestrictions(ctx, String(input.collection), item.id, item.slug)))).flat()
 			: await getEntryRestrictions(ctx, input.collection, input.contentId, input.slug as string | null | undefined);
@@ -146,8 +150,10 @@ export async function recordReceiptHandler(routeCtx: RouteContext, ctx: PluginCo
 
 export async function plansHandler(_routeCtx: RouteContext, ctx: PluginContext) {
 	const settings = await loadSettings(ctx);
+	if (settings.humans.mode === "migration-required") return routeError("UNAVAILABLE", "Complete the membership migration before enabling access.");
+	const ready = settings.humans.mode === "stripe" && Boolean(settings.stripeSecretKey) && await isEmailReady(ctx);
 	return {
-		plans: (await ctx.kv?.get("state:legacyPluginPresent") === true ? [] : settings.humans.plans).map(({ slug, name, description, monthlyLabel, yearlyLabel, trialLabel }) =>
-			({ slug, name, description, monthlyLabel, yearlyLabel, trialLabel }))
+		plans: settings.humans.plans.map(({ slug, name, description, monthlyLabel, yearlyLabel, trialLabel, stripeProductId }) =>
+			({ slug, name, description, monthlyLabel, yearlyLabel, trialLabel, checkoutEnabled: ready && Boolean(stripeProductId) }))
 	};
 }

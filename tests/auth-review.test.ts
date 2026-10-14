@@ -20,6 +20,7 @@ function context() {
 		request: new Request("https://site.test/auth/send-link"),
 		requestMeta: { ip: "192.0.2.1" },
 		kv: {
+			get: async (key: string) => counters.get(key)?.value ?? null,
 			getVersioned: async (key: string) => counters.get(key) ?? null,
 			compareAndSet: async (key: string, revision: string | null, value: number[]) => {
 				if ((counters.get(key)?.revision ?? null) !== revision) return { applied: false };

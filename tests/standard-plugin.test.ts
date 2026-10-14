@@ -36,24 +36,25 @@ describe("standard plugin companion seams", () => {
 		for (const name of ["access", "auth/session", "auth/logout", "portal", "auth/verify", "checkout/complete", "checkout", "auth/send-link"]) {
 			expect(route(name)).toMatchObject({ methods: ["POST"], public: true });
 		}
-		for (const name of ["agent/context", "receipts/record", "admin/settings", "admin", "editor/paid-access", "coexistence/report", "entitlements"]) expect(route(name).public).not.toBe(true);
+		for (const name of ["agent/context", "receipts/record", "admin/settings", "admin", "editor/paid-access", "entitlements"]) expect(route(name).public).not.toBe(true);
 		// Only the editor panel is open to non-admins.
 		for (const name of Object.keys(plugin.routes!)) {
 			if (!route(name).public && name !== "editor/paid-access") expect(route(name).permission).toBe("plugins:manage");
 		}
 		expect(route("editor/paid-access").permission).toBe("content:publish_any");
 	});
-	it("gives agents nothing free while humans are delegated", async () => {
+	it("blocks agent reads until a historical membership installation is migrated", async () => {
 		const ctx = context({ agentsMode: "paid", agentsNetwork: "eip155:84532", agentsFreeByDefault: true, humansMode: "delegate" }, "public", "agents-pay");
-		const result = await invoke(route("agent/context").handler, { ...ctx, input: { collection: "posts", contentId: "1", slug: "post" } }) as { rules: Array<{ policy: string }>; agents: { freeByDefault: boolean } };
-		expect(result.rules.map(rule => rule.policy)).not.toContain("public");
-		expect(result.agents.freeByDefault).toBe(false);
-		// The same holds when the legacy plugin is merely detected, whatever mode is configured.
-		const detected = context({ agentsMode: "paid", agentsNetwork: "eip155:84532", agentsFreeByDefault: true }, "public");
-		const kv = { get: async (key: string) => key === "state:legacyPluginPresent" };
-		const seen = await invoke(route("agent/context").handler, { ...detected, kv, input: { collection: "posts", contentId: "1", slug: "post" } }) as typeof result;
-		expect(seen.rules).toEqual([]); expect(seen.agents.freeByDefault).toBe(false);
+		await expect(invoke(route("agent/context").handler, { ...ctx, input: { collection: "posts", contentId: "1", slug: "post" } })).resolves.toMatchObject({ ok: false, error: { code: "UNAVAILABLE" } });
 	});
+	it("refuses direct rule mutations while migration is pending", async () => {
+		await expect(invoke(route("admin/restrictions").handler, { ...context({ humansMode: "delegate" }), request: new Request("https://site.test/rules", { method: "DELETE" }), input: { contentId: "1", collectionSlug: "posts" } })).resolves.toMatchObject({ ok: false, error: { code: "UNAVAILABLE" } });
+	});
+	it("blocks free agent reads when our stored state records a pending migration", async () => {
+		const ctx = context({ agentsMode: "paid", agentsNetwork: "eip155:84532", agentsFreeByDefault: true }, "public");
+		await expect(invoke(route("agent/context").handler, { ...ctx, kv: { get: async () => true }, input: { collection: "posts", contentId: "1", slug: "post" } })).resolves.toMatchObject({ ok: false, error: { code: "UNAVAILABLE" } });
+	});
+
 	it("returns private context including unioned rules and the highest sale price", async () => {
 		const ctx = context({ agentsMode: "paid", agentsNetwork: "eip155:84532" }, "agents-pay", "members-only");
 		await expect(invoke(route("agent/context").handler, { ...ctx, input: { collection: "posts", contentId: "1", slug: "post" } })).resolves.toEqual({
@@ -83,7 +84,7 @@ describe("standard plugin companion seams", () => {
 	it("exposes only plan display fields in Stripe mode", async () => {
 		const ctx = context({ humansMode: "stripe", humansPlans: MASONJAMES_PLANS, stripeSecretKey: "sk_test_private" });
 		const result = await invoke(route("plans").handler, ctx);
-		expect(result).toEqual({ plans: MASONJAMES_PLANS.map(({ slug, name, description, monthlyLabel, yearlyLabel, trialLabel }) => ({ slug, name, description, monthlyLabel, yearlyLabel, trialLabel })) });
+		expect(result).toEqual({ plans: MASONJAMES_PLANS.map(({ slug, name, description, monthlyLabel, yearlyLabel, trialLabel }) => ({ slug, name, description, monthlyLabel, yearlyLabel, trialLabel, checkoutEnabled: false })) });
 		expect(JSON.stringify(result)).not.toMatch(/stripe|visibility|productId|sk_test/i);
 		for (const humansMode of ["off", "delegate"]) await expect(invoke(route("plans").handler, context({ humansMode }))).resolves.toMatchObject({ error: { code: "MODULE_DISABLED" } });
 	});
@@ -118,7 +119,7 @@ describe("discovery metadata", () => {
 	});
 });
 
-it("resolves canonical URLs with a null fallback and suppresses coexisting plans", async () => {
+it("resolves canonical URLs with a null fallback and hides plans while migration is pending", async () => {
 	const ctx = context({ agentsMode: "paid", humansMode: "stripe", humansPlans: MASONJAMES_PLANS });
 	const getPublicUrl = vi.fn(async () => "https://site.test/blog/post/");
 	const input = { collection: "posts", contentId: "1", slug: "post" };
@@ -126,5 +127,9 @@ it("resolves canonical URLs with a null fallback and suppresses coexisting plans
 	expect(getPublicUrl).toHaveBeenCalledWith("posts", "1");
 	getPublicUrl.mockRejectedValueOnce(new Error("unavailable"));
 	expect(await invoke(route("agent/context").handler, { ...ctx, input, content: { getPublicUrl } })).toMatchObject({ canonicalUrl: null });
-	expect(await invoke(route("plans").handler, { ...ctx, kv: { get: async () => true } })).toEqual({ plans: [] });
+	expect(await invoke(route("plans").handler, { ...ctx, kv: { get: async () => true } })).toMatchObject({ ok: false, error: { code: "MODULE_DISABLED" } });
+});
+
+it("does not advertise payment routes while migration is pending", async () => {
+ expect(await metadata(context({ agentsMode: "paid", humansMode: "delegate" }))).toBeNull();
 });

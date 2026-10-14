@@ -5,7 +5,7 @@ import type { BlockResponse } from "@emdash-cms/blocks";
 import type { PluginContext } from "emdash/plugin";
 import { loadSettings } from "../handlers/settings.js";
 import { normalizeContentRestriction } from "../restrictions.js";
-import { allRows, banner, context, link } from "./shared.js";
+import { MIGRATION_REQUIRED, allRows, banner, context, link } from "./shared.js";
 import { receiptMetrics } from "./receipts.js";
 
 export async function overview(ctx: PluginContext): Promise<BlockResponse> {
@@ -15,8 +15,9 @@ export async function overview(ctx: PluginContext): Promise<BlockResponse> {
 	const metrics = totals.live;
 	const rules = (await allRows(ctx.storage.restrictions)).filter(row => normalizeContentRestriction(row.data));
 	const agents = s.agents.mode === "off" ? "Off" : s.agents.network === "eip155:84532" ? "On — Base Sepolia test network" : "On — Base";
-	const humans = s.humans.mode === "off" ? "Off" : s.humans.mode === "delegate" ? "Restrict With Stripe" : s.stripeEnvironment === "test" ? "Stripe (test mode)" : "Stripe";
+	const humans = s.humans.mode === "off" ? "Off" : s.humans.mode === "migration-required" ? "Migration required" : s.stripeEnvironment === "test" ? "Stripe (test mode)" : "Stripe";
 	return { blocks: [
+		...(s.humans.mode === "migration-required" ? [banner(MIGRATION_REQUIRED, "alert")] : []),
 		{ type: "stats", items: [{ label: "Agent revenue (30 days)", value: metrics.revenue }, { label: "Paid agent reads (30 days)", value: metrics.recent.length }, { label: "Posts with rules", value: rules.length }] },
 		...(s.agents.mode !== "off" && metrics.receipts.length ? [metrics.chart] : []),
 		context(`Agents: ${agents} · Members: ${humans}`),

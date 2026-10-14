@@ -8,9 +8,14 @@ email provider, or deployment adapter.
 
 ## 1. Choose a package
 
-The public npm beta is `0.1.0-beta.2`. The EmDash registry remains unpublished. An npm installation on
-Node includes the core descriptor and companion and does not need a registry
-listing.
+This source revision's native integration is a local candidate, not published
+or deployed. Evaluate its exact reviewed source archive with the matching
+EmDash core and host bindings. A public clone or beta install does not establish
+that it contains those local changes.
+
+The recorded npm beta is `0.1.0-beta.2`. An npm installation on Node includes
+the core descriptor and companion and does not need a registry listing.
+That earlier package does not qualify the native candidate.
 
 Install the exact beta in your site:
 

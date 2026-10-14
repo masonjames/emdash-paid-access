@@ -57,7 +57,7 @@ export function resolveAccess(input: ResolverInput): ResolverResult {
 	return { policy, human, agent, status, headers };
 }
 
-/** Translate the existing native/delegated human decision for the host reader gate. */
+/** Translate the Paid Access human decision for the host reader gate. */
 export function resolveReaderAccess(decision: AccessDecision & { showExcerpts?: boolean }): "allow" | "preview" | "deny" {
 	const resolved = resolveAccess({
 		policies: [decision.restricted ? "members" : "public"],

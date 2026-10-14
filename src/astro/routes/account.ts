@@ -28,6 +28,9 @@ async function handle(context: APIContext): Promise<Response> {
 	const sessionToken = cookies.get("phb_session")?.value ?? null;
 	const post = ["sign-in", "logout", "checkout"].includes(action ?? "");
 	if (request.method !== (post ? "POST" : "GET")) return new Response(null, { status: 405, headers: { Allow: post ? "POST" : "GET" } });
+	const origin = request.headers.get("origin");
+	const sameOrigin = origin === url.origin || ((!origin || origin === "null") && request.headers.get("sec-fetch-site") === "same-origin");
+	if (post && !sameOrigin) return new Response(null, { status: 403, headers: { "Cache-Control": "private, no-store" } });
 	let path = "/";
 	try {
 		if (action === "logout") {

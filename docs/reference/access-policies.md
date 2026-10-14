@@ -48,13 +48,15 @@ access, not all selected plans at once. Entitlements may come from active/triali
 subscriptions or eligible paid standalone invoices; see [Stripe behavior](../guides/stripe-memberships.md#what-grants-access).
 Unknown/empty plan mappings cannot create a free-member entitlement. In stripe
 mode, `access({ requiredPlanSlugs })` that names any unknown or removed plan is
-denied, even when it also names a configured one. Off mode returns its usual
-error, and delegate mode forwards the slugs for the legacy plugin to enforce.
+denied, even when it also names a configured one. Off mode denies protected
+access. Historical delegation settings or Paid Access's stored delegation marker load
+as `migration-required`, even for a saved Off or Stripe mode, and deny access
+until a reviewed offline migration is complete.
 
-During legacy delegation, the reader must satisfy each plugin's restrictions;
-Paid Access does not let a successful legacy response silently discard its
-requirements. Free agent access is suppressed while legacy presence/delegation
-is active. See [migration](../guides/migration.md).
+Paid Access resolves its own policies and native Stripe entitlements. It does
+not consult another plugin or accept its member cookies. Preserve and review
+existing rules, plans and customer associations through the explicit
+[offline migration](../guides/migration.md) before enabling native membership.
 
 ## Rules for pages of any collection
 
@@ -106,10 +108,10 @@ page must stay out of the HTML for readers without access.
 
 - Both modules default off. Agent mode off returns 404.
 - Entries without rules do not get agent Markdown unless `freeByDefault` is
-  explicitly enabled, and legacy protection can still suppress it.
+  explicitly enabled; `migration-required` denies agent access as well.
 - Turning human access off does not unlock existing members rules.
 - Missing required product configuration, unavailable entitlement checks, and
-  uncertain legacy state deny the body.
+  an incomplete migration deny the body.
 - The agent endpoint rejects draft/preview content even when the host supports previews.
 - An unavailable price, payout wallet, network, enforcer, or payment service can
   return 503 instead of content.

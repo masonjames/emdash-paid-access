@@ -3,12 +3,12 @@
 
 import type { Block, BlockResponse, FormField } from "@emdash-cms/blocks";
 import type { PluginContext } from "emdash/plugin";
-import { agentsNeverFree, loadSettings } from "../handlers/settings.js";
+import { loadSettings } from "../handlers/settings.js";
 import { getEntryRestrictions, highestAgentPrice, normalizeAgentPrice, normalizeContentRestriction, priceFromInput } from "../restrictions.js";
 import { resolveAccess } from "../resolver.js";
 import type { AccessPolicy, ContentRestrictionRecord, RouteContext } from "../types.js";
 import { nowIso } from "../utils.js";
-import { AGENTS_PAY_WARNING, banner, context, failure, interaction, link, str } from "./shared.js";
+import { AGENTS_PAY_WARNING, MIGRATION_REQUIRED, banner, context, failure, interaction, link, str } from "./shared.js";
 
 const labels: Record<AccessPolicy, string> = {
 	public: "Public — free machine-readable copy",
@@ -20,8 +20,7 @@ class ValidationError extends Error {}
 
 const paidPolicies = ["agents-pay", "members"];
 const memberPolicies = ["members-only", "members"];
-const legacyMessage = "An older rule needs migration before editing. Ask your site maintainer to merge the older rules while preserving access restrictions.";
-const delegatedMessage = "This entry also has a Paid Access membership rule. Editing here could change website access. Ask the site maintainer to review it under Advanced rules before changing the machine-readable copy.";
+const oldRuleMessage = "An older Paid Access rule uses this entry’s slug. Ask your site maintainer to merge it with the entry-ID rule while preserving all access restrictions before editing.";
 
 export async function editorPanel(route: RouteContext, ctx: PluginContext): Promise<BlockResponse> {
 	const identity = route.ui?.entry;
@@ -29,8 +28,7 @@ export async function editorPanel(route: RouteContext, ctx: PluginContext): Prom
 	const entry = await ctx.content.get(identity.collection, identity.id);
 	if (!entry) return failure("This post couldn't be found. Reload the editor and try again.");
 	const settings = await loadSettings(ctx);
-	const delegated = settings.humans.mode === "delegate";
-	const neverFree = await agentsNeverFree(ctx, settings);
+	const migrationRequired = settings.humans.mode === "migration-required";
 	const key = `${identity.collection}:${identity.id}`;
 	const legacyKey = entry.slug && entry.slug !== identity.id ? `${identity.collection}:${entry.slug}` : null;
 	const load = async () => {
@@ -48,13 +46,12 @@ export async function editorPanel(route: RouteContext, ctx: PluginContext): Prom
 	let stored: Awaited<ReturnType<typeof load>>;
 	try { stored = await load(); }
 	catch { return failure("This post’s stored access rules could not be loaded safely. Ask the site maintainer to review them under Advanced rules."); }
-	const editingBlocked = () => stored.legacy ? legacyMessage : delegated && stored.own &&
-		(memberPolicies.includes(stored.own.policy) || (stored.own.requiredPlanSlugs?.length ?? 0) > 0 || (stored.own.productIds?.length ?? 0) > 0) ? delegatedMessage : null;
+	const editingBlocked = () => migrationRequired ? MIGRATION_REQUIRED : stored.legacy ? oldRuleMessage : null;
 	const options = [
 		{ value: "defaults", label: "Use defaults" },
-		...(!delegated && !neverFree ? [{ value: "public", label: labels.public }] : []),
-		...(settings.agents.mode === "paid" ? [{ value: "agents-pay", label: delegated ? "Paid machine-readable copy" : labels["agents-pay"] }] : []),
-		...(!delegated && settings.humans.mode === "stripe" && settings.humans.plans.some(p => p.stripeProductId) && !neverFree ? [
+		{ value: "public", label: labels.public },
+		...(settings.agents.mode === "paid" ? [{ value: "agents-pay", label: labels["agents-pay"] }] : []),
+		...(settings.humans.mode === "stripe" && settings.humans.plans.some(p => p.stripeProductId) ? [
 			{ value: "members-only", label: labels["members-only"] },
 			...(settings.agents.mode === "paid" ? [{ value: "members", label: labels.members }] : []),
 		] : []),
@@ -84,7 +81,7 @@ export async function editorPanel(route: RouteContext, ctx: PluginContext): Prom
 				if (!options.some(option => option.value === preset)) throw new ValidationError("Choose an available access preset. Provider settings may have changed.");
 				for (const name of ["plans_members", "plans_members-only"]) {
 					const value = i.values[name];
-					if (value !== undefined && (!Array.isArray(value) || !value.every(v => typeof v === "string" && settings.humans.mode === "stripe" && !neverFree && settings.humans.plans.some(p => p.slug === v && p.stripeProductId)))) throw new ValidationError("Choose only currently supported membership plans.");
+					if (value !== undefined && (!Array.isArray(value) || !value.every(v => typeof v === "string" && settings.humans.mode === "stripe" && settings.humans.plans.some(p => p.slug === v && p.stripeProductId)))) throw new ValidationError("Choose only currently supported membership plans.");
 				}
 				if (memberPolicies.includes(preset) && (!Array.isArray(i.values[`plans_${preset}`]) || !(i.values[`plans_${preset}`] as unknown[]).length)) throw new ValidationError("Choose at least one membership plan.");
 				const agentPrice = paidPolicies.includes(preset) ? normalizeAgentPrice(priceFromInput(i.values[`price_${preset}`])) : null;
@@ -118,11 +115,11 @@ export async function editorPanel(route: RouteContext, ctx: PluginContext): Prom
 	} else if (i.type !== "panel_load") return failure("This action is unavailable. Reload the editor and try again.");
 
 	const { own, rules } = stored;
-	const effective = resolveAccess({ policies: rules.map(r => r.policy), audience: "agent", agentsMode: settings.agents.mode, freeByDefault: settings.agents.freeByDefault && !neverFree });
-	const machine = neverFree && effective.policy === "public" ? "Not offered (free reads disabled)"
+	const effective = resolveAccess({ policies: rules.map(r => r.policy), audience: "agent", agentsMode: settings.agents.mode, freeByDefault: settings.agents.freeByDefault });
+	const machine = migrationRequired ? "Unavailable — migration required"
 		: effective.agent === "granted" ? "Free copy" : effective.agent === "payment-required" ? `Paid copy · ${highestAgentPrice(rules) ?? "price missing"} per read` : "Not offered";
 	const blocks: Block[] = [
-		context(`Website access: ${delegated ? "Controlled by Restrict With Stripe" : memberPolicies.includes(effective.policy) ? "Members only" : "Public"}`),
+		context(`Website access: ${migrationRequired ? "Unavailable — migration required" : memberPolicies.includes(effective.policy) ? "Members only" : "Public"}`),
 		context(`Machine-readable copy (saved policy): ${machine}`),
 	];
 	const details: Block[] = [
@@ -134,20 +131,18 @@ export async function editorPanel(route: RouteContext, ctx: PluginContext): Prom
 	for (const rule of rules.filter(r => "taxonomyName" in r)) {
 		details.push(context(`Inherited from ${rule.taxonomyName}:${rule.termId}: ${labels[rule.policy]}. The strongest rule wins; an entry preset cannot weaken it.`));
 	}
-	if (delegated) blocks.push(context("Choose a paid copy or use inherited defaults. A separate Not offered override is unavailable."));
-	else if (neverFree) blocks.push(context("Restrict With Stripe is active. Review its rule in the Restrict panel; free machine-readable reads are disabled."));
 	const blocked = editingBlocked();
-	if (blocked) return { blocks: [...blocks, banner(blocked, "alert"), { type: "accordion", label: "Policy details", blocks: details }, { type: "actions", elements: [link("Advanced rules", "/rules")] }], ...(toast ? { toast } : {}) };
+	if (blocked) return { blocks: [...blocks, banner(blocked, "alert"), { type: "accordion", label: "Policy details", blocks: details }, { type: "actions", elements: [migrationRequired ? link("Member settings", "/settings") : link("Advanced rules", "/rules")] }], ...(toast ? { toast } : {}) };
 	const preset = typed ? str(typed.preset) : own?.policy ?? "defaults";
-	const fields: FormField[] = [{ type: "radio", action_id: "preset", label: delegated ? "Machine-readable copy" : "Access", options, ...(options.some(o => o.value === preset) ? { initial_value: preset } : {}) }];
+	const fields: FormField[] = [{ type: "radio", action_id: "preset", label: "Access", options, ...(options.some(o => o.value === preset) ? { initial_value: preset } : {}) }];
 	for (const option of options) {
 		if (paidPolicies.includes(option.value)) fields.push({ type: "text_input", action_id: `price_${option.value}`, label: "Price per read (USD)", placeholder: "$0.05", initial_value: typed ? str(typed[`price_${option.value}`]) : own?.agentPrice ?? "", condition: { field: "preset", eq: option.value } });
 		if (memberPolicies.includes(option.value) && settings.humans.plans.length) fields.push({ type: "checkbox", action_id: `plans_${option.value}`, label: "Membership plans (choose at least one)", options: settings.humans.plans.filter(p => p.stripeProductId).map(p => ({ value: p.slug, label: p.name })), initial_value: (typed && Array.isArray(typed[`plans_${option.value}`]) ? (typed[`plans_${option.value}`] as unknown[]).filter((v): v is string => typeof v === "string") : own?.requiredPlanSlugs ?? []).filter(v => settings.humans.plans.some(p => p.slug === v && p.stripeProductId)), condition: { field: "preset", eq: option.value } });
 	}
-	if (effective.policy === "agents-pay") blocks.push(banner(delegated ? "If the website page is public, its HTML can be read without buying this copy." : AGENTS_PAY_WARNING, "alert"));
+	if (effective.policy === "agents-pay") blocks.push(banner(AGENTS_PAY_WARNING, "alert"));
 	blocks.push({ type: "form", block_id: blockId, fields, submit: { action_id: "editor:save", label: "Save access" } });
 	if (own && !options.some(o => o.value === own.policy)) blocks.push(banner("The stored preset is unavailable with the current provider settings. It remains in force until you explicitly choose and save an available option.", "alert"));
-	details.push(context(delegated ? "Use defaults removes only this entry’s paid-copy rule; inherited rules still apply." : "Use defaults inherits site/category rules. Public explicitly offers a free copy."));
+	details.push(context("Use defaults inherits site/category rules. Public explicitly offers a free copy."));
 	if (settings.humans.mode === "off" && memberPolicies.includes(effective.policy)) blocks.push(banner("Member access is off; the stored member restriction cannot be unlocked.", "alert"));
 	details.push(context("Host payment setup is unverified here. Missing configuration keeps paid reads unavailable. See Settings."));
 	blocks.push({ type: "accordion", label: "Policy details", blocks: details }, { type: "actions", elements: [link("Settings", "/settings"), link("Advanced rules", "/rules")] });

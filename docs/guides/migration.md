@@ -1,77 +1,127 @@
-# Coexistence and migration
+# Migrate member access
 
 [Documentation](../README.md) / Migration
 
-Existing Restrict With Stripe sites can evaluate Paid Access while leaving the
-old plugin responsible for members. This beta provides delegation, **not an
-automatic data migration or session bridge**.
+Paid Access owns its membership settings, sign-in sessions, Stripe checks and
+content rules. It does not call, probe, or require Restrict With Stripe at runtime.
+That plugin can be an explicit, offline migration source; its code and data remain
+under its own maintainer's control.
 
-## Evaluate without replacing member access
+A saved `delegate` setting or Paid Access's historical
+`state:legacyPluginPresent=true` marker becomes **Migration required**, even if
+the saved human mode says Off or Stripe. That marker records earlier delegated
+protection; it is not a live probe of another plugin. Existing rules and plans
+are preserved. Membership mode, plans, the editor and Rules page stay locked
+until an explicit reviewed offline migration completes. You can still save
+Stripe keys and excerpt preferences; those saves do not complete migration.
 
-1. Back up the current site and database, then rehearse with copied/sanitized data
-   on a test host. Record the existing rule and member behavior before changing it.
-2. Keep Restrict With Stripe installed. Install the Paid Access companion and
-   core, then select **Use Restrict With Stripe (during migration)** in Members.
-3. Preserve your existing sign-in, pricing, and account UI. If the site already
-   owns `/account/*`, set `injectAccountRoutes: false` so injected handlers do not
-   collide with those pages.
-4. Use `PaidContent` for the body and keep your existing locked UI in its named
-   slot, or integrate the access decision explicitly in the existing theme.
-5. Verify known eligible and ineligible readers against both plugins' rules.
-   Do not assume two different plan IDs mean the same Stripe product.
+## Review the migration before changing a site
 
-Example theme slot, using your site's own existing component:
+1. Record the current build and take a recoverable database backup. Work first
+   on a disposable copy with synthetic or sanitized member data.
+2. Inventory the source rules, plans and customer associations. Build an explicit
+   mapping to Paid Access; do not infer plan equivalence from names or labels.
+3. Review the mapping and rehearse its application offline. There is no automatic
+   import on plugin installation, page load or sign-in. Do not copy secrets or
+   session tokens into a migration report.
+4. Configure Paid Access's own Stripe test-mode key through its secret settings
+   field and configure an EmDash email provider. Use the intended Stripe account
+   and product IDs; a customer's email alone is not a reviewed identity mapping.
+5. Configure the site to use Paid Access's own routes, reader protection and
+   pricing. Remove old-plugin imports, registration and route calls from the
+   candidate build. The separately reviewed offline migration procedure must explicitly clear
+   the historical marker and transition member configuration only after
+   preserving its protection in native rules. The audit is not an importer;
+   a marker-only edit or settings save must never substitute for that procedure.
+   Selecting **Off** does not unlock stored member restrictions.
+6. Have test members sign in again using Paid Access. Old-plugin sessions are not
+   accepted or bridged. Verify eligible, ineligible, canceled and signed-out
+   readers, then run the [public-content/cache audit](hosting-and-caching.md).
+7. Approve the deployment and recovery procedure separately after the rehearsal.
+   Keep the source backup and migration report; do not delete the old plugin's
+   records as part of application startup.
 
-```astro
----
-import PaidContent from "emdash-paid-access/components/PaidContent.astro";
-import ExistingMembershipGate from "../components/ExistingMembershipGate.astro";
-// `post` is loaded by the page; ExistingMembershipGate is your own component.
----
-<PaidContent entry={post} collection="posts">
-  <ExistingMembershipGate slot="locked" />
-</PaidContent>
+| Data | Preserve and verify |
+| --- | --- |
+| Entry and taxonomy rules | Stable content IDs, locales, inherited policies and required entitlements; no rule may become weaker because another rule is absent |
+| Paid Access's older slug-keyed rules | Merge with its entry-ID rules explicitly, retaining the strongest restrictions; these are Paid Access records, not calls to the old plugin |
+| Plans and Stripe products | Stable plan IDs and exact product associations, including rules referring to removed plans |
+| Customers | Exact Stripe customer IDs and their approved member associations in the intended Stripe account/environment |
+| Sessions | New Paid Access sign-in; no imported tokens or cookie bridge |
+| Public pricing | The intended products, supported recurring prices and billing intervals |
+| Recovery | The prior build and data compatibility proof, with no automatic database restore that discards new member writes |
+
+Free-member entitlements and automatic migration are outside this release. Do
+not replace a free-members rule with a paid membership rule and assume sign-in
+alone will unlock it. Displaying a trial label does not configure Checkout trials.
+
+Paid Access never refreshes the historical marker by calling another plugin.
+If it records earlier delegated protection, retain the migration lock until
+that protection has been explicitly mapped and verified. If a migration cannot
+be verified, keep the candidate locked and resolve the mapping before proceeding.
+
+## Offline audit and retained-source receipt
+
+This audit currently supports the Mason James imported plan identifiers
+(`default-product` and `content-personall-ai`). Other installations need a
+separately reviewed mapping; unknown identifiers are refused.
+
+The optional `emdash-paid-access/migration-audit` export inspects an existing
+SQLite connection using SELECTs only. It emits counts and action categories;
+credentials, session tokens, member identities and content bodies are not read
+into the report. Its command-line adapter requires the host's `better-sqlite3`
+dependency and a closed standalone database copy:
+
+```sh
+node node_modules/emdash-paid-access/scripts/legacy-migration-audit.mjs --offline-database /absolute/path/to/offline-copy.db
 ```
 
-`ExistingMembershipGate` is illustrative, not a component shipped by this package.
+After independently mapping and rehearsing the native settings and rules,
+`--prepare-review` can emit a receipt candidate containing hashes and counts.
+Preparation still reports migration pending; it is not approval. Review the
+candidate and pin the exact UTF-8 JSON bytes outside plugin settings. The caller
+may pass `{ reviewedReceiptJson, approvedReceiptSha256 }` to the audit. Only
+matching reviewed source and native protection can clear the review blocker;
+unknown rules, unsupported free-member semantics and incomplete mappings remain
+blocked. The original plugin records stay intact. No importer or automatic
+session/credential transfer is provided.
 
-## What delegation does
-
-- The companion probes the legacy public session route and reports presence to
-  the core through a private route.
-- The decision honors restrictions from both plugins. Access is denied if the
-  legacy response cannot be verified or cannot satisfy Paid Access requirements.
-- The settings handler refuses Stripe mode when it knows the legacy plugin is
-  active. The runtime also downgrades a conflicting Stripe configuration to
-  delegation.
-- Paid Access's own pricing/checkout is not the member entry point in delegation.
-- Agents do not obtain free Markdown while the legacy plugin is active or
-  delegation is configured. Explicit paid rules are still required for sales.
-
-Presence is cached for the process lifetime; absence is rechecked after up to
-60 seconds. Restart the host after enabling or removing the legacy plugin to
-avoid a transition that depends on that cache. A probe error fails closed.
-
-## Plan the eventual cutover
-
-Before removing the legacy plugin, inventory and map:
-
-| Item | Required decision |
-| --- | --- |
-| Plans and products | Which Paid Access plan IDs grant each existing entitlement? |
-| Entry/taxonomy restrictions | Which rules must be copied, and how are conflicts resolved? |
-| Customer records | How will existing Stripe customer/product relationships be reconciled? |
-| Sessions | How will members sign in again? This beta does not bridge legacy cookies. |
-| Free members | What happens to readers who have no paid product entitlement? |
-| Checkout offers | Are displayed prices/trials actually supported by the new checkout? |
-| Rollback | Which build, data backup, and account UI restore the prior behavior? |
-
-Free-member entitlements and automatic migration are outside the beta. Do not
-replace a working free-members rule with a Paid Access members rule and assume
-sign-in alone will unlock it. A trial label does not configure Checkout trials.
-
-Rehearse the full cutover and rollback before scheduling it. Compare signed-out,
-eligible, ineligible, canceled, and legacy-session cases, then run the
-[public-content/cache audit](hosting-and-caching.md).
+The Site bootstrap accepts an absolute receipt-file path and its exact file hash
+through `PAID_ACCESS_MIGRATION_RECEIPT` and
+`PAID_ACCESS_MIGRATION_RECEIPT_SHA256`. Both are trusted deployment inputs; do not
+copy them from plugin options. Legacy access drift or changed inherited native
+rules requires a new review. Unrelated new native entries and plan display-label
+edits do not invalidate that review. Resolve historical delegation mode/markers
+only as part of the reviewed offline transition, never to bypass an audit.
 
 [Stripe behavior](stripe-memberships.md) · [Policy reference](../reference/access-policies.md)
+
+## One runtime policy after migration
+
+Before the candidate serves content, the offline audit must prove inherited
+restrictions are represented by native rules. Imported visibility and product
+labels are historical evidence, never an additional runtime policy. Remove their
+access mapping from page wrappers and clearly label retained editor fields as
+nonfunctional historical metadata. Native rules then govern pages, core reader
+APIs, feeds, and agent routes consistently. Choosing Public in Paid Access is an
+intentional access change on all of those surfaces.
+
+While the retained-source receipt is enforced at boot, changing a covered native
+rule, product mapping, membership mode, Stripe account/environment, or disconnecting
+Stripe requires a fresh reviewed receipt before restarting. Those edits can take
+effect immediately; the receipt is a startup migration check, not a runtime lock.
+A restart with drift refuses to serve. Recovery is to restore the reviewed
+configuration or complete a new offline review and pin its receipt. Never clear
+the source records to bypass this check.
+
+### Retained protected metadata is a nonwaivable migration constraint
+
+On a database with historical members/paid metadata, including retained revisions,
+changing those entries to Public or Use defaults, switching Members Off,
+disconnecting Stripe, or removing/relinking their imported plans is unsupported
+until a separately reviewed procedure retires that metadata while preserving its
+original evidence. A new receipt alone cannot approve these changes: it only
+acknowledges an already valid mapping and never waives missing protection or
+configuration. Until that procedure exists and is reviewed, restore the prior
+reviewed configuration before restart. Editing historical fields can also block
+startup; use Paid Access controls and leave these retained fields unchanged.

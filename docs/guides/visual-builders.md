@@ -21,8 +21,8 @@ The vocabulary is closed:
   entitlement, because anyone can sign in with a magic link.
 - `plan:<slug>`: the reader owns the Stripe product of that configured plan.
 - `entitled`: only when you pass `entry`, and only when that entry's body may
-  render for this reader. An entry without a Paid Access rule counts (in
-  delegate mode, unless the legacy plugin restricts it).
+  render for this reader. An entry without a Paid Access rule counts unless
+  member settings require migration.
 
 The list is sorted and deduplicated, and each call returns its own array. It is
 `[]` whenever anything can't be verified, including the entry's access
@@ -36,11 +36,11 @@ signature and the plan ID rules.
 | Human mode | `member` | `plan:<slug>` | `entitled` (only with `entry`) |
 | --- | --- | --- | --- |
 | `stripe` | A valid Paid Access session | Each configured plan whose Stripe product the member owns | `canRenderBody(await access(entry))`, so unrestricted entries qualify |
-| `delegate` | The legacy plugin's session, read with the forwarded cookie | Never: the legacy plugin owns plans, and `plans()` is `[]` | From the already-delegated `access(entry)` |
+| `migration-required` | Never | Never | Never; access remains locked until migration is reviewed and configured |
 | `off` | Never | Never | Follows `access(entry)`: an unrestricted entry is entitled; a restricted one returns an error, so the list is `[]` |
 
-In every mode, an unavailable or malformed answer from the core, the legacy
-plugin or Stripe gives `[]`. In stripe mode without a Stripe key, a signed-in
+In every mode, an unavailable or malformed answer from Paid Access or Stripe
+gives `[]`. In stripe mode without a Stripe key, a signed-in
 reader gets `member` and no plans, or `[]` if you pass a restricted `entry`.
 
 ### "Only" and "Everyone except"
@@ -125,8 +125,7 @@ and call to action under "Everyone except `entitled`".
   uses: the content ID as `id` and the entry's route ID as `slug`. The decision
   is shared with an `access()` call for the same input in the same request.
 - `entitled` follows the entry's rules. An entry without a Paid Access rule is
-  entitled for everyone (in delegate mode, unless the legacy plugin restricts
-  it), so give the post a `members` or `members-only` rule. In stripe mode the
+  entitled for everyone unless member settings require migration, so give the post a `members` or `members-only` rule. In stripe mode the
   rule needs at least one plan: without one, the decision can't be verified
   and the list is `[]` for every reader.
 - When the entry's decision can't be verified, the whole list is `[]`, not just
@@ -219,20 +218,14 @@ else that uses them.
 Then run the [paid-then-unpaid checks](hosting-and-caching.md#prove-paid-then-unpaid-isolation)
 on a builder page as well as a post.
 
-## Delegate mode
+## Migration required
 
-When Members uses Restrict With Stripe (delegate mode), or a site set to
-stripe mode is downgraded to delegate because Restrict With Stripe is active,
-segments are narrower:
-
-- `member` comes from the legacy plugin's session, read with the reader's
-  forwarded cookie. A Paid Access session doesn't count.
-- There are no `plan:*` segments, because the legacy plugin owns plans. Use
-  `entitled` with an entry instead.
-- `entitled` comes from the delegated `access()` decision, so the reader must
-  satisfy both plugins' rules.
-
-See [coexistence and migration](migration.md).
+A historical delegation setting or Paid Access's stored delegation marker is
+read as `migration-required`, including when the saved mode says Off or Stripe.
+Audience segments are empty; membership mode, plans and content rules are locked.
+Paid Access never calls the old plugin or accepts its session cookie. Complete
+the reviewed [offline migration](migration.md) before native member access is
+enabled, then ask members to sign in again. Key/excerpt saves do not clear the lock.
 
 ## Pricing without a mirror
 

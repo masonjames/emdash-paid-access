@@ -26,10 +26,6 @@ function readAccessInput(routeCtx: RouteContext) {
 export async function accessHandler(routeCtx: RouteContext, ctx: PluginContext) {
 	const settings = await loadSettings(ctx);
 	const humanMode = settings.humans.mode;
-	// Only the trusted companion can report coexistence through the private route.
-	if (humanMode === "stripe" && await ctx.kv?.get("state:legacyPluginPresent") === true) {
-		settings.humans = { ...settings.humans, mode: "delegate" };
-	}
 	const input = readAccessInput(routeCtx);
 	if (!input.contentId || !input.collectionSlug) return { ok: false, error: "contentId and collectionSlug are required." };
 	const rules = await getEntryRestrictions(ctx, input.collectionSlug, input.contentId, input.slug);
@@ -53,21 +49,17 @@ async function resolveHumanAccess(routeCtx: RouteContext, ctx: PluginContext, se
 		...resolveRequiredProductIds(settings.humans.plans, requiredPlanSlugs),
 	]);
 	const restricted = humanRestrictionRecords.length > 0 || requiredPlanSlugs.length > 0 || requiredProductIds.length > 0;
-	if (settings.humans.mode === "off" || settings.humans.mode === "delegate") {
-		// Imported caller requirements may still belong to an installed legacy
-		// provider. Only the trusted coexistence report permits that delegation;
-		// native rules remain disabled and fail closed when our memberships are off.
-		const delegateCaller = settings.humans.mode === "off" && humanRestrictionRecords.length === 0
-			&& requiredPlanSlugs.length > 0 && await ctx.kv?.get("state:legacyPluginPresent") === true;
+	if (settings.humans.mode !== "stripe") {
+		const migrationRequired = settings.humans.mode === "migration-required";
 		return {
-			restricted,
+			restricted: restricted || migrationRequired,
 			authenticated: false,
-			hasAccess: !restricted,
+			hasAccess: !restricted && !migrationRequired,
 			email: null,
 			requiredPlanSlugs,
 			requiredProductIds,
-			...(settings.humans.mode === "delegate" || delegateCaller ? { delegated: true } : {}),
-			...(settings.humans.mode === "off" && restricted && !delegateCaller ? { error: "Member access is turned off for this site." } : {}),
+			...(migrationRequired ? { error: "Complete the membership migration before enabling access." }
+				: restricted ? { error: "Member access is turned off for this site." } : {}),
 		};
 	}
 	const email = await getSessionEmail(ctx, isRecord(routeCtx.input) ? routeCtx.input.sessionToken : undefined);
@@ -83,7 +75,7 @@ async function resolveHumanAccess(routeCtx: RouteContext, ctx: PluginContext, se
 			requiredProductIds,
 		};
 	}
-	if (requiredProductIds.length === 0 || callerPlanSlugs.some((slug) => !validPlanSlugs.has(slug))) {
+	if (requiredProductIds.length === 0 || requiredPlanSlugs.some((slug) => !validPlanSlugs.has(slug))) {
 		return { restricted: true, authenticated, hasAccess: false, email, requiredPlanSlugs, requiredProductIds, error: "Required plans are not configured." };
 	}
 

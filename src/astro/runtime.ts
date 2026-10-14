@@ -5,7 +5,7 @@
 import { resolveReaderAccess } from "../resolver.js";
 import type {} from "emdash/locals";
 import type {} from "@emdash-cms/x402/locals";
-import { ABSENT_TTL_MS, failClosedHumanDecision, legacyAbsentSince, legacySession, probeLegacyPlugin, resolveHumanMode, unionAccessDecisions, type PublicPluginRouteHandler } from "../coexistence.js";
+import { failClosedHumanDecision, unionAccessDecisions, type PublicPluginRouteHandler } from "../decisions.js";
 import type { AccessDecision, HumanMode, MemberSessionState } from "../types.js";
 import { planSegment, type HumanPlan } from "../plans.js";
 import { isRecord } from "../utils.js";
@@ -14,7 +14,7 @@ import type { PaidAccessOptions } from "./options.js";
 export type PluginLocals = { emdash?: { handlePluginApiRoute?: PublicPluginRouteHandler; handlePublicPluginApiRoute: PublicPluginRouteHandler } };
 export type PluginResult<T> = { ok: true; data: T } | { ok: false; code: string };
 export type HumanDecision = AccessDecision & { humanMode?: HumanMode; showExcerpts?: boolean; agentsSold?: boolean };
-export type PublicPlan = Pick<HumanPlan, "slug" | "name" | "description" | "monthlyLabel" | "yearlyLabel" | "trialLabel">;
+export type PublicPlan = Pick<HumanPlan, "slug" | "name" | "description" | "monthlyLabel" | "yearlyLabel" | "trialLabel"> & { checkoutEnabled: boolean };
 export type AccessInput = { collection: string; id: string; slug: string; requiredPlanSlugs?: string[]; locale?: string; revision?: string };
 
 async function dispatch<T>(locals: PluginLocals, path: string, body: unknown, publicOnly: boolean, pluginId: string, request?: Request): Promise<PluginResult<T>> {
@@ -24,8 +24,6 @@ async function dispatch<T>(locals: PluginLocals, path: string, body: unknown, pu
 		const url = new URL(`/_emdash/api/plugins/${encodeURIComponent(pluginId)}/${path}`, request?.url ?? "https://paid-access.invalid");
 		if (method === "GET" && isRecord(body)) for (const [key, value] of Object.entries(body)) if (value != null) url.searchParams.set(key, String(value));
 		const headers = new Headers({ "Content-Type": "application/json" });
-		// Only the legacy public API needs the browser cookie; the paid-access core receives an explicit token.
-		if (pluginId !== "paid-access" && request?.headers.has("cookie")) headers.set("cookie", request.headers.get("cookie")!);
 		const init = new Request(url, { method, headers, ...(method === "POST" ? { body: JSON.stringify(body) } : {}) });
 		// Anonymous requests (every AI agent) only get EmDash's public dispatcher on
 		// locals, so trusted calls to private routes fall back to the server-only runtime.
@@ -50,59 +48,27 @@ export function callPublicPlugin<T = Record<string, unknown>>(locals: PluginLoca
 }
 
 function validDecision(value: unknown): value is HumanDecision {
-	return isRecord(value) && typeof value.restricted === "boolean" && typeof value.hasAccess === "boolean" && typeof value.authenticated === "boolean"
+	return isRecord(value) && ["off", "stripe"].includes(String(value.humanMode)) && typeof value.restricted === "boolean" && typeof value.hasAccess === "boolean" && typeof value.authenticated === "boolean"
 		&& (value.email === null || typeof value.email === "string") && Array.isArray(value.requiredPlanSlugs) && value.requiredPlanSlugs.every(v => typeof v === "string")
 		&& Array.isArray(value.requiredProductIds) && value.requiredProductIds.every(v => typeof v === "string");
 }
 export function canRenderBody(decision: AccessDecision): boolean { return decision.hasAccess === true && !decision.error; }
 type Entitlements = { humanMode: HumanMode; authenticated: boolean; planSlugs: string[] };
 function validEntitlements(value: unknown): value is Entitlements {
-	return isRecord(value) && value.ok === true && typeof value.humanMode === "string" && ["off", "stripe", "delegate"].includes(value.humanMode)
+	return isRecord(value) && value.ok === true && typeof value.humanMode === "string" && ["off", "stripe", "migration-required"].includes(value.humanMode)
 		&& typeof value.authenticated === "boolean"
 		&& Array.isArray(value.planSlugs) && value.planSlugs.every(slug => typeof slug === "string");
 }
 const accessKey = (input: AccessInput) => JSON.stringify([input.collection, input.id, input.slug, input.requiredPlanSlugs ?? [], input.locale, input.revision]);
 
-let reported: Promise<boolean> | undefined;
-let reportedAbsentAt = 0;
-export function resetRuntimeForTests(): void { reported = undefined; reportedAbsentAt = 0; }
-
 export function createPaidAccess(locals: PluginLocals, request: Request, sessionToken: string | null, options: Required<PaidAccessOptions>) {
 	const memo = new Map<string, Promise<HumanDecision>>();
-	async function probe(): Promise<boolean> {
-		if (!locals.emdash) throw new Error("EmDash unavailable");
-		// Recheck an "absent" answer once it's stale, and report the new one to the core.
-		if (reportedAbsentAt && Date.now() - reportedAbsentAt > ABSENT_TTL_MS) { reported = undefined; reportedAbsentAt = 0; }
-		reported ??= (async () => {
-			const present = await probeLegacyPlugin((_id, method, path, req) => locals.emdash!.handlePublicPluginApiRoute(options.legacyPluginId, method, path, req), request);
-			const result = await callPlugin(locals, "coexistence/report", { legacyPluginPresent: present }, request);
-			if (!result.ok) throw new Error("Coexistence report unavailable");
-			if (["off", "stripe", "delegate"].includes(String(result.data.humanMode))) resolveHumanMode(result.data.humanMode as HumanMode, present);
-			// Expire with the probe itself, however long reporting took.
-			reportedAbsentAt = present ? 0 : legacyAbsentSince();
-			return present;
-		})().catch(error => { reported = undefined; throw error; });
-		return reported;
-	}
 	async function access(input: AccessInput): Promise<HumanDecision> {
 		try {
-			const present = await probe();
 			const body = { collection: input.collection, collectionSlug: input.collection, contentId: input.id, slug: input.slug, requiredPlanSlugs: input.requiredPlanSlugs, sessionToken };
 			const result = await callPlugin(locals, "access", body, request);
 			if (!result.ok || !validDecision(result.data) || result.data.error) return failClosedHumanDecision();
-			const ours = result.data;
-			const mode = resolveHumanMode(ours.humanMode ?? (ours.delegated ? "delegate" : "off"), present).mode;
-			// Turning our memberships off must not disable an installed legacy
-			// provider's restrictions. Native off-mode restrictions already fail closed above.
-			if (!present && !ours.delegated && mode !== "delegate") return ours;
-			const legacy = await callPublicPlugin(locals, "access", { ...body, sessionToken: undefined, requiredPlanSlugs: ours.requiredPlanSlugs, requiredProductIds: ours.requiredProductIds }, options.legacyPluginId, request);
-			if (!legacy.ok || !validDecision(legacy.data) || legacy.data.error) return failClosedHumanDecision();
-			const legacyDecision = legacy.data;
-			// A legacy response must actually enforce our requirements, not silently drop unknown plans.
-			const granted = legacyDecision.restricted && legacyDecision.authenticated && legacyDecision.hasAccess
-				&& ours.requiredPlanSlugs.every(slug => legacyDecision.requiredPlanSlugs.includes(slug))
-				&& ours.requiredProductIds.every(id => legacyDecision.requiredProductIds.includes(id));
-			return { ...ours, ...unionAccessDecisions({ ...ours, hasAccess: !ours.restricted || granted }, legacy.data) };
+			return result.data;
 		} catch { return failClosedHumanDecision(); }
 	}
 	function memoizedAccess(input: AccessInput): Promise<HumanDecision> {
@@ -113,13 +79,10 @@ export function createPaidAccess(locals: PluginLocals, request: Request, session
 	// One entitlements call per request, however many segments() calls there are. Rejects on any doubt.
 	let readerSegments: Promise<string[]> | undefined;
 	async function readReaderSegments(): Promise<string[]> {
-		const present = await probe();
 		const result = await callPlugin(locals, "entitlements", { sessionToken }, request);
 		if (!result.ok || !validEntitlements(result.data)) throw new Error("Entitlements unavailable");
 		const { humanMode, authenticated, planSlugs } = result.data;
-		const mode = resolveHumanMode(humanMode, present).mode;
-		if (mode === "delegate") return await legacySession((id, method, path, req) => locals.emdash!.handlePublicPluginApiRoute(id, method, path, req), request, options.legacyPluginId) ? ["member"] : [];
-		if (mode !== "stripe" || !authenticated) return [];
+		if (humanMode !== "stripe" || !authenticated) return [];
 		return ["member", ...planSlugs.map(planSegment).filter((segment): segment is string => segment !== null)];
 	}
 	const segmentMemo = new Map<string, Promise<string[]>>();
@@ -157,8 +120,6 @@ export function createPaidAccess(locals: PluginLocals, request: Request, session
 		readerProvider() {
 			return { id: "paid-access", decide: async (resource: AccessInput & { locale: string; revision: string }) => resolveReaderAccess(await readerAccess(resource)) };
 		},
-		/** Tell the core whether the legacy plugin is active. Throws when that can't be established. */
-		detectLegacy: probe,
 		access: memoizedAccess,
 		/**
 		 * Audience segments for visual builders: `member` (signed in, not a paid entitlement),
@@ -176,7 +137,6 @@ export function createPaidAccess(locals: PluginLocals, request: Request, session
 		},
 		async session(): Promise<MemberSessionState> {
 			try {
-				await probe();
 				const result = await callPlugin(locals, "auth/session", { sessionToken }, request);
 				if (result.ok && result.data.authenticated === true && typeof result.data.email === "string") return { authenticated: true, email: result.data.email };
 			} catch { /* An unavailable session is anonymous. */ }
@@ -185,7 +145,7 @@ export function createPaidAccess(locals: PluginLocals, request: Request, session
 		async plans(): Promise<PublicPlan[]> {
 			const result = await callPublicPlugin(locals, "plans", {}, "paid-access", request);
 			if (!result.ok || !Array.isArray(result.data.plans)) return [];
-			return result.data.plans.filter((plan): plan is PublicPlan => isRecord(plan) && typeof plan.slug === "string" && typeof plan.name === "string"
+			return result.data.plans.filter((plan): plan is PublicPlan => isRecord(plan) && typeof plan.slug === "string" && typeof plan.name === "string" && typeof plan.checkoutEnabled === "boolean"
 				&& ["description", "monthlyLabel", "yearlyLabel", "trialLabel"].every(key => plan[key] == null || typeof plan[key] === "string"));
 		},
 	};

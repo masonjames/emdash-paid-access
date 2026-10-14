@@ -33,7 +33,7 @@ highest price applies. `members-only` takes precedence and is not for sale.
 
 Leave **Offer free Markdown for posts without a rule** off until every affected
 collection is safe to expose. An explicit public rule can offer free Markdown,
-except while legacy membership delegation/presence prevents free agent reads.
+except while member settings require migration, which keeps access locked.
 
 ## Request flow
 

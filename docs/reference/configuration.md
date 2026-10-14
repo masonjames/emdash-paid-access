@@ -13,11 +13,12 @@ paidAccessAstro({
   accountPath: "/account",
   injectAccountRoutes: true,
   facilitatorUrl: "https://x402.org/facilitator",
-  legacyPluginId: "restrict-with-stripe",
 });
 ```
 
-All options are optional; the example shows their defaults.
+All options are optional; the example shows defaults for the basic companion.
+The host protection and payment options below require the matching EmDash core
+contracts; installing the published beta does not supply those contracts.
 
 | Option | Behavior |
 | --- | --- |
@@ -26,7 +27,11 @@ All options are optional; the example shows their defaults.
 | `accountPath` | Same path restrictions; prefix for injected account handlers |
 | `injectAccountRoutes` | Set false if the site supplies its own account handlers |
 | `facilitatorUrl` | HTTPS endpoint without credentials, query, or fragment; normalized without trailing slashes |
-| `legacyPluginId` | ID of the legacy membership plugin used by the companion |
+| `readerProtection` | Default false; enables the registered reader provider for explicit host reader-protection bindings |
+| `hostPayments` | Default false; uses the host payment contract for registered paid routes |
+| `entitlementTimeoutMs` | Reader decision deadline, default 1500 ms; integer 100–10000 |
+| `paymentMaxConcurrent` | Per-process paid-route concurrency limit, default 8; integer 1–64 |
+| `paymentRequestsPerMinute` | Per-process paid-route request limit, default 120; integer 1–6000 |
 
 These are build-time settings. Change paths in the companion **and** Advanced
 settings in the plugin admin, then rebuild. The admin stores the account path
@@ -39,6 +44,14 @@ Markdown preference. A different payout/network does not change the facilitator
 endpoint. [Mainnet configuration limits](../guides/x402-payments.md#mainnet-is-a-separate-configuration)
 apply even if the admin lets you select Base.
 
+Human mode is configured as **Off** or **Stripe**. A historical stored
+`delegate` value or its own historical `state:legacyPluginPresent=true` marker
+loads as `migration-required`, including when the saved mode says Off or Stripe.
+Access fails closed and membership mode, plans and rule editing remain locked
+until a reviewed [offline migration](../guides/migration.md) is complete.
+Key and excerpt-only saves remain available and do not clear that lock. Paid Access does not inspect or invoke another membership plugin,
+and does not accept its sessions.
+
 ## Components
 
 Import individual Astro files from `emdash-paid-access/components/`.
@@ -46,7 +59,7 @@ Import individual Astro files from `emdash-paid-access/components/`.
 | Component | Props | Purpose |
 | --- | --- | --- |
 | `PaidContent.astro` | `entry`, optional `collection`, `excerpt`, `redirect` | Checks access and renders Portable Text or the locked UI |
-| `Pricing.astro` | `redirect: string` | Displays configured Stripe plans and Checkout forms |
+| `Pricing.astro` | `redirect: string` | Displays plans and Checkout forms only when `checkoutEnabled` is true |
 | `Paywall.astro` | `decision`, `redirect`, `collection`, `slug` | Default member UI; normally rendered by `PaidContent` |
 
 `PaidContent.entry` is `{ id: string, data: { id?: string, content?: PortableTextBlock[] } }`.
@@ -76,9 +89,13 @@ The companion adds `Astro.locals.paidAccess` per request:
 | --- | --- |
 | `access({ collection, id, slug, requiredPlanSlugs? })` | Returns a human access decision, memoized within the request |
 | `session()` | Returns `{ authenticated, email }` for a Paid Access member session |
-| `plans()` | Public plan labels, empty when unavailable or delegation suppresses them |
+| `plans()` | Array of public plan labels with a required `checkoutEnabled` boolean on each plan; empty when unavailable |
 | `segments({ entry? })` | Returns `Promise<string[]>`: sorted audience segments for visual builders, memoized within the request |
 | `options` | Resolved companion options |
+
+Configured plan labels remain available independently of Checkout readiness.
+Custom pricing renderers must offer Checkout only when that plan has
+`checkoutEnabled === true`; labels alone do not imply a working payment setup.
 
 For a custom renderer, require `decision.hasAccess === true` **and no error**.
 Use the exported `canRenderBody` helper from `emdash-paid-access/astro/runtime`
@@ -102,7 +119,7 @@ The vocabulary is closed:
 | Human mode | `member` | `plan:<slug>` | `entitled` |
 | --- | --- | --- | --- |
 | `stripe` | A valid Paid Access session | Each configured plan whose product the member owns | From `access(entry)` |
-| `delegate` | The legacy plugin's session | Never | From the delegated `access(entry)` |
+| `migration-required` | Never | Never | Never |
 | `off` | Never | Never | Only for unrestricted entries |
 
 Segments never contain staff roles, emails or tokens, and never read

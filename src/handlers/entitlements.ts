@@ -35,8 +35,8 @@ async function ownedProducts(ctx: PluginContext, stripe: StripeClient, email: st
 /** Private: the companion's member and plan segments for one reader. */
 export async function memberEntitlementsHandler(routeCtx: RouteContext, ctx: PluginContext) {
 	const settings = await loadSettings(ctx);
-	// The same downgrade as access: only the trusted companion reports coexistence.
-	const humanMode: HumanMode = settings.humans.mode === "stripe" && await ctx.kv?.get("state:legacyPluginPresent") === true ? "delegate" : settings.humans.mode;
+	// Native Paid Access sessions and Stripe settings own all entitlements.
+	const humanMode: HumanMode = settings.humans.mode;
 	if (humanMode !== "stripe") return { ok: true, humanMode, authenticated: false, planSlugs: [] };
 	const email = await getSessionEmail(ctx, isRecord(routeCtx.input) ? routeCtx.input.sessionToken : undefined);
 	const configured = uniqueStrings(settings.humans.plans.map((plan) => plan.stripeProductId));

@@ -34,8 +34,6 @@ export const GET: APIRoute = async ({ params, locals, request, site }) => {
 		// getEmDashEntry can serve preview drafts; agent endpoints must never do so.
 		if (!entry || isPreview || entry.data.status !== "published") return empty(404);
 		const id = entry.data.id ?? entry.id;
-		// The core must know whether Restrict With Stripe is active before it may serve anything free.
-		await locals.paidAccess.detectLegacy();
 		const result = await (locals.paidAccess?.trustedContent ?? (<T>(run: () => T) => run()))(() => callPlugin<{ rules: ContentRestrictionRecord[]; agents: AgentSettings; canonicalUrl: string | null }>(locals, "agent/context", { collection: params.collection, contentId: id, slug: params.slug, ...(options.readerProtection ? { readerProtection: true } : {}) }, request));
 		if (!result.ok) {
 			console.error(`[paid-access] agent/context failed: ${result.code}`);

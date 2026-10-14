@@ -4,8 +4,12 @@
 
 ### Changed
 
-- The companion continues enforcing an installed legacy provider's restrictions
-  when native memberships are off; provider failures still deny access.
+- Paid Access independently owns membership settings, sign-in sessions and Stripe
+  access. Legacy plugin probing, delegation and presence reports are removed.
+  Historical delegation settings require an explicit offline migration before
+  access resumes; no old sessions or secrets are automatically imported.
+- Unknown stored plan requirements deny access even when another product matches.
+- Public checkout controls require native Stripe and email configuration.
 - The visual builders guide documents EmVB's `visitor.segments` option, its
   current name rule and the Post Content caveat.
 - The installation guide explains pnpm's 24-hour release cooldown on

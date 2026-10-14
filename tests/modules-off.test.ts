@@ -32,10 +32,17 @@ describe("both modules off", () => {
 			agents: { mode: "off" },
 			humans: { mode: "off" },
 		});
-		for (const routeName of Object.keys(plugin.routes).filter((name) => !["access", "admin/settings", "admin", "editor/paid-access", "agent/context", "receipts/record", "coexistence/report", "entitlements", "reader/group"].includes(name))) {
+		for (const routeName of Object.keys(plugin.routes).filter((name) => !["access", "auth/logout", "admin/settings", "admin", "editor/paid-access", "agent/context", "receipts/record", "entitlements", "reader/group"].includes(name))) {
 			await expect(invoke(plugin.routes[routeName].handler, context())).resolves.toMatchObject({ ok: false, error: { code: "MODULE_DISABLED" } });
 		}
 		// The companion must still learn the mode, so entitlements answers with nothing to grant.
 		await expect(invoke(plugin.routes.entitlements.handler, context())).resolves.toEqual({ ok: true, humanMode: "off", authenticated: false, planSlugs: [] });
 	});
+});
+
+it.each(["off", "migration-required", "delegate"])("revokes native sessions even when membership mode is %s", async humansMode => {
+ const deleted: string[] = [];
+ const ctx = { ...context(), input: { sessionToken: "native-session" }, settings: { get: async (key: string) => key === "humansMode" ? humansMode : null }, storage: { sessions: { delete: async (id: string) => { deleted.push(id); } } } };
+ await expect(invoke(plugin.routes["auth/logout"].handler, ctx)).resolves.toEqual({ ok: true });
+ expect(deleted).toEqual(["aadb1f87a13328af74ebd0ebad6e1714dd0b89f205d0175ed15cda0ae74b6a1a"]);
 });

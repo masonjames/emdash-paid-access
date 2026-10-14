@@ -55,9 +55,9 @@ describe("human rule decisions", () => {
 		await expect(invoke(accessHandler, context("off", "members"))).resolves.toMatchObject({ restricted: true, hasAccess: false, error: "Member access is turned off for this site." });
 		await expect(invoke(accessHandler, context("off"))).resolves.toMatchObject({ restricted: false, hasAccess: true });
 	});
-	it("returns the plugin decision in delegate mode", async () => {
-		await expect(invoke(accessHandler, context("delegate", "members"))).resolves.toMatchObject({ delegated: true, restricted: true, hasAccess: false });
-		await expect(invoke(accessHandler, context("delegate"))).resolves.toMatchObject({ delegated: true, restricted: false, hasAccess: true });
+	it("fails closed until historical delegation has been migrated", async () => {
+		await expect(invoke(accessHandler, context("delegate", "members"))).resolves.toMatchObject({ humanMode: "migration-required", restricted: true, hasAccess: false });
+		await expect(invoke(accessHandler, context("delegate"))).resolves.toMatchObject({ humanMode: "migration-required", restricted: true, hasAccess: false });
 	});
 	it("fails closed when a caller requires an unknown plan in stripe mode", async () => {
 		await expect(invoke(accessHandler, callerContext("stripe", ["removed"]))).resolves.toMatchObject({ restricted: true, hasAccess: false, requiredPlanSlugs: ["removed"], error: "Required plans are not configured." });
@@ -65,9 +65,9 @@ describe("human rule decisions", () => {
 	it("fails closed when any caller plan is unknown, even beside a configured one", async () => {
 		await expect(invoke(accessHandler, callerContext("stripe", ["plus", "removed"]))).resolves.toMatchObject({ restricted: true, hasAccess: false, requiredPlanSlugs: ["plus", "removed"], requiredProductIds: ["prod_plus"], error: "Required plans are not configured." });
 	});
-	it("passes caller plan slugs through unfiltered in delegate and off modes", async () => {
-		await expect(invoke(accessHandler, callerContext("delegate", ["removed"]))).resolves.toMatchObject({ delegated: true, restricted: true, hasAccess: false, requiredPlanSlugs: ["removed"] });
-		await expect(invoke(accessHandler, callerContext("delegate", ["plus", "removed"]))).resolves.toMatchObject({ delegated: true, restricted: true, hasAccess: false, requiredPlanSlugs: ["plus", "removed"], requiredProductIds: ["prod_plus"] });
+	it("preserves required plan slugs while migration is pending or memberships are off", async () => {
+		await expect(invoke(accessHandler, callerContext("delegate", ["removed"]))).resolves.toMatchObject({ humanMode: "migration-required", restricted: true, hasAccess: false, requiredPlanSlugs: ["removed"] });
+		await expect(invoke(accessHandler, callerContext("delegate", ["plus", "removed"]))).resolves.toMatchObject({ humanMode: "migration-required", restricted: true, hasAccess: false, requiredPlanSlugs: ["plus", "removed"], requiredProductIds: ["prod_plus"] });
 		await expect(invoke(accessHandler, callerContext("off", ["removed"]))).resolves.toMatchObject({ restricted: true, hasAccess: false, requiredPlanSlugs: ["removed"], error: "Member access is turned off for this site." });
 	});
 	it("denies a signed-in member who owns a configured plan when the caller also requires an unknown one", async () => {
@@ -83,15 +83,15 @@ describe("human rule decisions", () => {
 	});
 });
 
-it("uses the trusted coexistence report to delegate forced Stripe before querying membership", async () => {
-	const ctx = { ...context("stripe", "members"), kv: { get: async () => true } };
-	await expect(invoke(accessHandler, ctx)).resolves.toMatchObject({ humanMode: "stripe", delegated: true, restricted: true, hasAccess: false, showExcerpts: true });
+it.each(["off", "stripe"])("keeps historical delegation pending in %s until reviewed migration", async mode => {
+ const result = await invoke(accessHandler, { ...context(mode), kv: { get: async () => true } });
+ expect(result).toMatchObject({ humanMode: "migration-required", restricted: true, hasAccess: false });
+ expect(result).not.toHaveProperty("delegated");
 });
-it("delegates imported-only requirements while off only with trusted legacy presence", async () => {
-	const ctx = { ...callerContext("off", ["plus", "removed"]), kv: { get: async () => true } };
-	const result = await invoke(accessHandler, ctx);
-	expect(result).toMatchObject({ restricted: true, hasAccess: false, delegated: true, requiredPlanSlugs: ["plus", "removed"] });
-	expect(result).not.toHaveProperty("error");
-	await expect(invoke(accessHandler, { ...context("off", "members"), kv: ctx.kv })).resolves.toMatchObject({ restricted: true, hasAccess: false, error: "Member access is turned off for this site." });
-	await expect(invoke(accessHandler, { ...ctx, kv: { get: async () => false } })).resolves.toMatchObject({ restricted: true, hasAccess: false, error: "Member access is turned off for this site." });
+
+it("denies unknown stored plans even alongside an owned product", async () => {
+	const { ctx, owns } = memberContext([], ["unknown-plan"]);
+	ctx.storage.restrictions.get = async () => ({ contentId: "one", collectionSlug: "posts", policy: "members", requiredPlanSlugs: ["unknown-plan"], productIds: ["prod_plus"], createdAt: "2026-09-29" });
+	await expect(invoke(accessHandler, ctx)).resolves.toMatchObject({ restricted: true, authenticated: true, hasAccess: false, error: "Required plans are not configured." });
+	expect(owns).not.toHaveBeenCalled();
 });

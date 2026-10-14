@@ -102,17 +102,18 @@ it("returns no plans without a Stripe key or session", async () => {
 it("reports the human mode without reading the session or calling Stripe outside stripe mode", async () => {
 	for (const mode of ["off", "delegate"]) {
 		const { ctx, sessions, fetch } = context({ mode });
-		await expect(invoke(memberEntitlementsHandler, ctx)).resolves.toEqual({ ok: true, humanMode: mode, authenticated: false, planSlugs: [] });
+		await expect(invoke(memberEntitlementsHandler, ctx)).resolves.toEqual({ ok: true, humanMode: mode === "delegate" ? "migration-required" : mode, authenticated: false, planSlugs: [] });
 		expect(sessions.get).not.toHaveBeenCalled();
 		expect(fetch).not.toHaveBeenCalled();
 	}
 });
 
-it("treats forced stripe as delegate when the legacy plugin is reported present", async () => {
-	const { ctx, sessions, fetch } = context({ legacyPresent: true });
-	await expect(invoke(memberEntitlementsHandler, ctx)).resolves.toEqual({ ok: true, humanMode: "delegate", authenticated: false, planSlugs: [] });
+it("treats historical delegation markers as migration pending without calling Stripe", async () => {
+	const stripe = stripeFake({ cus_local: { subscriptions: [subscription("prod_plus")] } });
+	const { ctx, sessions } = context({ legacyPresent: true, fetch: stripe.fetch });
+	await expect(invoke(memberEntitlementsHandler, ctx)).resolves.toEqual({ ok: true, humanMode: "migration-required", authenticated: false, planSlugs: [] });
 	expect(sessions.get).not.toHaveBeenCalled();
-	expect(fetch).not.toHaveBeenCalled();
+	expect(stripe.fetch).not.toHaveBeenCalled();
 });
 
 it("is not ok when Stripe fails", async () => {

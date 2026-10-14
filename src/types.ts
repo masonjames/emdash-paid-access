@@ -12,7 +12,7 @@ import type { HumanPlan } from "./plans.js";
 export type StripeEnvironment = "live" | "test";
 export type AgentMode = "off" | "tokens-only" | "paid";
 export type AgentRail = "origin-x402" | "gateway";
-export type HumanMode = "off" | "stripe" | "delegate";
+export type HumanMode = "off" | "stripe" | "migration-required";
 export type AccessPolicy = "public" | "agents-pay" | "members" | "members-only";
 
 export interface AgentSettings {
@@ -111,7 +111,6 @@ export interface MemberSessionState {
 }
 
 export interface AccessDecision {
-	delegated?: boolean;
 	restricted: boolean;
 	authenticated: boolean;
 	hasAccess: boolean;

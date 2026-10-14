@@ -83,18 +83,20 @@ describe("loadSettings", () => {
 		);
 	});
 
-	it("refuses to save Stripe mode while the legacy plugin is present", async () => {
-		const ctx = {
-			...createCtx(),
-			request: new Request("https://site.test/admin/settings", { method: "POST" }),
-			input: { legacyPluginPresent: true, humans: { mode: "stripe", plans: MASONJAMES_PLANS } },
-		};
+	it("ignores untrusted caller hints when saving independent Stripe settings", async () => {
+		const ctx = { ...createCtx(), request: new Request("https://site.test/admin/settings", { method: "POST" }),
+			kv: { get: async () => null }, input: { legacyPluginPresent: true, humans: { mode: "stripe", plans: MASONJAMES_PLANS } } };
+		await expect(invoke(settingsHandler, ctx)).resolves.toEqual({ ok: true });
+		expect(ctx.settingsStore.get("humansMode")).toBe("stripe");
+	});
 
-		await expect(invoke(settingsHandler, ctx)).resolves.toEqual({
-			ok: false,
-			error: "Stripe mode cannot be enabled while the legacy membership plugin is active. Use delegate mode.",
-		});
-		expect(ctx.settingsStore.has("humansMode")).toBe(false);
+	it("maps historical delegation to migration required and refuses to configure delegation", async () => {
+		expect((await loadSettings(createCtx({ settingsSeed: { humansMode: "delegate" } }))).humans.mode).toBe("migration-required");
+		for (const mode of ["delegate", "migration-required"]) {
+			const ctx = { ...createCtx(), request: new Request("https://site.test/settings", { method: "POST" }), input: { humans: { mode, plans: [] } } };
+			await expect(invoke(settingsHandler, ctx)).resolves.toMatchObject({ ok: false });
+			expect(ctx.settingsStore.size).toBe(0);
+		}
 	});
 
 	it("validates every section before the first write", async () => {
@@ -102,7 +104,7 @@ describe("loadSettings", () => {
 		const request = new Request("https://site.test/admin/settings", { method: "POST" });
 		const agents = { mode: "off", rail: "origin-x402", network: "", payTo: "", edgeTrust: "none" };
 		const ctx = { ...base, request, input: { agents, humans: { mode: "invalid", plans: [] } } };
-		await expect(invoke(settingsHandler, ctx)).resolves.toMatchObject({ ok: false, error: "Invalid humans.mode." });
+		await expect(invoke(settingsHandler, ctx)).resolves.toMatchObject({ ok: false, error: "Choose Off or Stripe memberships." });
 		expect(ctx.settingsStore.size).toBe(0);
 		await expect(invoke(settingsHandler, { ...base, request, input: { agents, stripeEnvironment: "invalid" } })).resolves.toMatchObject({ ok: false, error: "Invalid stripeEnvironment." });
 		expect(ctx.settingsStore.size).toBe(0);
@@ -162,4 +164,17 @@ describe("standard settings storage", () => {
 			expect(ctx.settingsStore.size).toBe(0);
 		}
 	});
+});
+
+it.each(["off", "stripe", "delegate", "migration-required"])("refuses member mode changes during reviewed migration (%s)", async mode => {
+ const base = createCtx({ settingsSeed: { humansMode: mode } });
+ const ctx = { ...base, kv: { get: async () => true }, request: new Request("https://site.test/settings", { method: "POST" }) };
+ expect((await loadSettings(ctx)).humans.mode).toBe("migration-required");
+ for (const nextMode of ["off", "stripe"]) {
+  await expect(invoke(settingsHandler, { ...ctx, input: { humans: { mode: nextMode, plans: [] } } })).resolves.toMatchObject({ ok: false });
+  expect(base.settingsStore.get("humansMode")).toBe(mode);
+ }
+ await expect(invoke(settingsHandler, { ...ctx, input: { stripeSecretKey: "sk_test_example", showExcerpts: false } })).resolves.toEqual({ ok: true });
+ expect(base.settingsStore.get("humansMode")).toBe(mode);
+ expect(base.settingsStore.get("showExcerpts")).toBe(false);
 });

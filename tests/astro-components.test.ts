@@ -32,7 +32,16 @@ it("renders configured pricing, labelled forms, status messages and agent links"
 		props: { entry: { id: "test", data: {} } },
 		locals: { paidAccess: { options: resolveOptions({ accountPath: "/members", agentRoutePrefix: "/bots" }), sessionToken: null,
 			access: async () => ({ restricted: true, hasAccess: false, authenticated: false, email: null, requiredPlanSlugs: [], requiredProductIds: [], agentsSold: true }),
-			plans: async () => [{ slug: "plus", name: "Plus", description: "Member access", monthlyLabel: "$5", yearlyLabel: "$50" }], segments: async () => [], session: async () => ({ authenticated: false, email: null }) } },
+			plans: async () => [{ slug: "plus", name: "Plus", description: "Member access", monthlyLabel: "$5", yearlyLabel: "$50", checkoutEnabled: true }], segments: async () => [], session: async () => ({ authenticated: false, email: null }) } },
 	});
 	for (const expected of ['action="/members/sign-in"', 'action="/members/checkout"', 'role="status"', "Monthly $5", "Yearly $50", "Check your email", "/bots/posts/test.md"]) expect(html).toContain(expected);
+});
+
+it("shows no purchase form until native checkout is explicitly ready", async () => {
+ const container = await AstroContainer.create();
+ const { default: Pricing } = await import("../src/components/Pricing.astro");
+ for (const checkoutEnabled of [false, undefined]) {
+  const html = await container.renderToString(Pricing, { props: { redirect: "/post" }, locals: { paidAccess: { options: resolveOptions(), plans: async () => [{ slug: "plus", name: "Plus", monthlyLabel: "$5", checkoutEnabled }] } } });
+  expect(html).not.toContain("/checkout"); expect(html).not.toContain('type="submit"');
+ }
 });

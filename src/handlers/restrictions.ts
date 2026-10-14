@@ -104,7 +104,7 @@ export async function restrictionsHandler(routeCtx: RouteContext, ctx: PluginCon
 			? merged.policy as AccessPolicy
 			: requiredPlanSlugs.length > 0 ? "members" : "public";
 		if (policy === "public" && await agentsNeverFree(ctx, settings)) {
-			return { ok: false, error: "While Restrict With Stripe is active, posts can't be free for AI agents. Choose Pay per read." };
+			return { ok: false, error: "Complete the reviewed offline migration before changing access rules." };
 		}
 		const agentPrice = normalizeAgentPrice(priceFromInput(merged.agentPrice));
 		if (merged.agentPrice != null && merged.agentPrice !== "" && !agentPrice) {

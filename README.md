@@ -26,7 +26,7 @@ Use either module or both, with one set of content rules in EmDash.
 - **Agents:** individual Markdown reads paid through x402, with receipts and separate
   testnet/mainnet totals.
 - **Publishers:** entry and taxonomy rules, an editor panel, and server-rendered paywalls.
-- **Existing sites:** delegated member access while Restrict With Stripe stays installed.
+- **Existing sites:** an explicit offline migration path for rules, plans and customer associations; no dependency on another membership plugin.
 
 The complete plugin is **free under GPL**, without license keys or paid feature
 tiers. Payments go to the creator's Stripe account or wallet; Paid Access takes
@@ -35,16 +35,17 @@ separate [services from Mason James](https://masonjames.com/plugins/paid-access/
 
 ## Beta status
 
-`0.1.0-beta.2` is the current public npm beta. **The EmDash plugin directory
-remains unpublished.** The [installation guide](docs/guides/installation.md)
-covers npm installation and building from the public source.
+The native membership integration in this source revision is a **local candidate,
+not published or deployed**. It requires the matching reviewed EmDash core and
+host integration. Local checks do not establish staging or production readiness.
 
-Try the [protected demo post](https://masonjames.com/blog/paid-access-demo/):
-people use the site's existing Stripe memberships; agents pay $0.001 in
-**Base Sepolia test USDC**. This demonstrates testnet settlement, not mainnet
-revenue. See the [0.1.0-beta.1 verification](docs/releases/0.1.0-beta.1.md) for the
-tested paths and remaining limits, and the [0.1.0-beta.2 verification](docs/releases/0.1.0-beta.2.md)
-for what this beta adds and what was checked again.
+The recorded public npm release is `0.1.0-beta.2`; its package and existing demo
+are earlier work, not evidence for this candidate. The
+[0.1.0-beta.1 verification](docs/releases/0.1.0-beta.1.md) and
+[0.1.0-beta.2 verification](docs/releases/0.1.0-beta.2.md) describe those historical
+checks, including testnet settlement rather than mainnet revenue. The
+[installation guide](docs/guides/installation.md) distinguishes the published
+beta from an exact source build.
 
 The beta targets **Node 22.12+**, **EmDash 1.2**, **x402 1.2**, and
 **Astro `^6.1.3 || ^7.3.5`**. Both payment modules start off. Local tests and
@@ -59,7 +60,9 @@ core plus companion require their own host acceptance testing.
 ## Quick start
 
 Start with an existing server-rendered EmDash 1.2 site on Node **22.12+**.
-Install the exact beta and its x402 peer:
+The following installs the recorded published beta, **not this native candidate**.
+For the candidate, use the exact reviewed source archive and matching core.
+Install the beta and its x402 peer:
 
 ```sh
 pnpm add emdash-paid-access@0.1.0-beta.2 @emdash-cms/x402@1.2.0
@@ -123,7 +126,7 @@ agent token in this beta. [Policy precedence and exceptions →](docs/reference/
 | Configure components, paths, or account handlers | [Configuration reference](docs/reference/configuration.md) |
 | Understand the security boundary | [Architecture and security](docs/reference/architecture-and-security.md) |
 | Gate elements or pages in a visual builder | [Visual builders](docs/guides/visual-builders.md) |
-| Migrate an existing membership site | [Coexistence and migration](docs/guides/migration.md) |
+| Migrate an existing membership site | [Offline migration](docs/guides/migration.md) |
 | Diagnose a failed request | [Troubleshooting](docs/reference/troubleshooting.md) |
 | Contribute or prepare a release | [Testing and releases](docs/guides/testing-and-releases.md) |
 
@@ -139,4 +142,4 @@ are welcome. Send security reports [privately](SECURITY.md).
 
 Discovery offers list policy, price and the read URL. Payment network and destination
 are supplied by that URL’s authoritative 402 challenge, which may use host settings
-different from the legacy companion settings.
+different from direct companion payment settings.

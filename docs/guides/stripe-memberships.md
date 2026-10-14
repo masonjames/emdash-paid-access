@@ -94,7 +94,8 @@ Test cancellation and expiration against the actual product types you use,
 including any paid standalone invoices. Check both a fresh private browser and
 the previously entitled browser after the entitlement changes.
 
-If Restrict With Stripe is already installed, use [delegation](migration.md) first.
-Do not enable two independent membership checkouts on the same content.
+If you are moving from another membership plugin, review and rehearse an
+[explicit offline migration](migration.md) first. Paid Access uses its own sign-in,
+checkout and customer associations; it does not consult the old plugin.
 
 [Troubleshoot member access](../reference/troubleshooting.md#members-and-checkout)

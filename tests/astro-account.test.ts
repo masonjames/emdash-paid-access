@@ -9,7 +9,7 @@ function setup(action: string, method = "GET", data: unknown = { ok: true }, ori
 	const body = new URLSearchParams(fields);
 	if (method === "GET") url.search = body.toString();
 	const cookies = { get: vi.fn(() => ({ value: "session-test" })), set: vi.fn(), delete: vi.fn() };
-	const context = { url, cookies, request: new Request(url, { method, ...(method === "POST" ? { body } : {}) }), locals: { emdash: { handlePluginApiRoute: handler } } } as unknown as APIContext;
+	const context = { url, cookies, request: new Request(url, { method, ...(method === "POST" ? { body, headers: { origin: url.origin } } : {}) }), locals: { emdash: { handlePluginApiRoute: handler } } } as unknown as APIContext;
 	return { context, handler, cookies };
 }
 it.each([true, false])("sign-in redirects with success=%s, sanitizing and sending intent", async success => {
@@ -59,4 +59,20 @@ it("portal requires a session and forwards a sanitized return URL", async () => 
 it("refuses GET sign-in and POST verification", async () => {
 	expect((await GET(setup("sign-in").context)).status).toBe(405);
 	expect((await POST(setup("verify", "POST").context)).status).toBe(405);
+});
+
+it.each(["logout", "sign-in", "checkout"])("rejects cross-origin and origin-less %s before dispatch", async action => {
+ for (const origin of [null, "https://unrelated.test"]) {
+  const { context, handler, cookies } = setup(action, "POST");
+  if (origin) context.request.headers.set("origin", origin); else context.request.headers.delete("origin");
+  expect((await POST(context)).status).toBe(403);
+  expect(handler).not.toHaveBeenCalled(); expect(cookies.delete).not.toHaveBeenCalled();
+ }
+});
+
+it.each([null, "null"])("accepts browser same-origin fetch metadata with suppressed Origin=%s", async origin => {
+ const { context, handler } = setup("logout", "POST");
+ if (origin) context.request.headers.set("origin", origin); else context.request.headers.delete("origin");
+ context.request.headers.set("sec-fetch-site", "same-origin");
+ expect((await POST(context)).status).toBe(303); expect(handler).toHaveBeenCalledOnce();
 });

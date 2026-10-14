@@ -43,12 +43,19 @@ describe("rules page", () => {
 		expect(ctx.storage.taxonomy_restrictions.data.size).toBe(1);
 		await admin(ctx, action("rules:remove", value)); expect(ctx.storage.taxonomy_restrictions.data.size).toBe(0);
 	});
-	it("in delegate mode, taxonomy rules only price AI agents", async () => {
-		const ctx = fixture({ ...paid, humansMode: "delegate" });
-		const selected = JSON.stringify(await admin(ctx, submit("rules:taxonomy:choose", { taxonomy: "category" })));
-		expect(selected).not.toContain('"action_id":"people"'); expect(selected).not.toContain("Not sold to agents");
-		await admin(ctx, submit("rules:taxonomy:save:category", { term: "premium", people: "members", agents: "pay", price: "$0.05" }));
-		expect(await ctx.storage.taxonomy_restrictions.get("category:premium")).toMatchObject({ policy: "agents-pay", agentPrice: "$0.05" });
+	it.each(["delegate", "off", "stripe"])("blocks every rule mutation while %s requires migration", async humansMode => {
+		const ctx = fixture({ ...paid, humansMode });
+		if (humansMode !== "delegate") await ctx.kv.set("state:legacyPluginPresent", true);
+		await ctx.storage.restrictions.put("posts:1", rule);
+		const before = [...ctx.storage.restrictions.data];
+		const screen = await admin(ctx, page("/rules"));
+		expect(JSON.stringify(screen)).toContain("Member access needs migration");
+		expect(flatten(screen.blocks).some(b => b.type === "form")).toBe(false);
+		for (const input of [submit("rules:taxonomy:save:category", { term: "premium", people: "anyone", agents: "free" }), submit("rules:page:save:emvb_pages", { entry: "01PRICING" }), action("rules:remove", JSON.stringify({ collectionSlug: "posts", contentId: "1" }))]) {
+			expect((await admin(ctx, input)).toast?.type).toBe("error");
+		}
+		expect([...ctx.storage.restrictions.data]).toEqual(before);
+		expect(ctx.storage.taxonomy_restrictions.data.size).toBe(0);
 	});
 	it("adds a rule for a published page of a visual builder's collection", async () => {
 		const ctx = fixture(paid);
@@ -63,9 +70,9 @@ describe("rules page", () => {
 		expect(await ctx.storage.restrictions.get("emvb_pages:01PRICING")).toMatchObject({ collectionSlug: "emvb_pages", contentId: "01PRICING", slug: "pricing", title: "Pricing", policy: "members-only", agentPrice: null });
 		expect(result.blocks.find(b => b.type === "table")).toMatchObject({ rows: [{ post: { label: "Pricing · pricing", target: { kind: "content", collection: "emvb_pages", id: "01PRICING" } }, people: "Members only", agents: "Not sold" }] });
 	});
-	it("saves page rules for people only in every mode, including delegate", async () => {
+	it("saves page rules for people only in off and Stripe modes", async () => {
 		const plan = { slug: "premium", name: "Premium", stripeProductId: "prod_one", grantsVisibility: [] };
-		for (const [seed, plans] of [[paid, []], [{ ...paid, humansMode: "stripe", humansPlans: [plan] }, ["premium"]], [{ ...paid, humansMode: "delegate", humansPlans: [plan] }, []]] as const) {
+		for (const [seed, plans] of [[paid, []], [{ ...paid, humansMode: "stripe", humansPlans: [plan] }, ["premium"]]] as const) {
 			const ctx = fixture(seed);
 			const form = JSON.stringify(await admin(ctx, submit("rules:page:choose", { collection: "emvb_pages" })));
 			expect(form).not.toContain('"action_id":"agents"'); expect(form).not.toContain('"action_id":"people"');

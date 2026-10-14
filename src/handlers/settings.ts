@@ -18,7 +18,7 @@ import { isEmailReady } from "./auth.js";
 
 const AGENT_MODES: AgentMode[] = ["off", "tokens-only", "paid"];
 const AGENT_RAILS: AgentRail[] = ["origin-x402", "gateway"];
-const HUMAN_MODES: HumanMode[] = ["off", "stripe", "delegate"];
+const HUMAN_MODES: HumanMode[] = ["off", "stripe", "migration-required"];
 const NETWORKS = ["", "eip155:84532", "eip155:8453"] as const;
 
 export const DEFAULT_AGENTS = {
@@ -68,14 +68,16 @@ function settingPath(value: unknown, fallback: string, trailingSlash: boolean): 
 	return trailingSlash ? `${path}/` : path;
 }
 
-// While Restrict With Stripe is active, in any mode, this plugin can't see who it or the
-// theme locks out, so agents never get a post free.
-export async function agentsNeverFree(ctx: PluginContext, settings: PaidAccessSettings): Promise<boolean> {
-	return settings.humans.mode === "delegate" || await ctx.kv?.get("state:legacyPluginPresent") === true;
+// A historical delegated installation has not imported its protection rules yet.
+export async function agentsNeverFree(_ctx: PluginContext, settings: PaidAccessSettings): Promise<boolean> {
+	return settings.humans.mode === "migration-required";
 }
 
 export async function loadSettings(ctx: PluginContext): Promise<PaidAccessSettings> {
 	const stripeSecretKey = (await ctx.settings.get("stripeSecretKey")) as string | null;
+	const storedMode = await ctx.settings.get("humansMode");
+	// This is our own historical migration marker, not a probe of another plugin.
+	const migrationRequired = storedMode === "delegate" || (await ctx.kv?.get("state:legacyPluginPresent")) === true;
 	const storedPlans = await ctx.settings.get("humansPlans");
 	const plans = storedPlans == null ? [] : normalizeHumanPlans(storedPlans);
 	if (!plans) throw new Error("Stored Paid Access plan settings are invalid.");
@@ -90,7 +92,7 @@ export async function loadSettings(ctx: PluginContext): Promise<PaidAccessSettin
 			freeByDefault: (await ctx.settings.get("agentsFreeByDefault")) === true,
 		},
 		humans: {
-			mode: enumValue(await ctx.settings.get("humansMode"), HUMAN_MODES, DEFAULT_HUMANS.mode),
+			mode: migrationRequired ? "migration-required" : enumValue(storedMode, HUMAN_MODES, DEFAULT_HUMANS.mode),
 			plans,
 		},
 		stripeSecretKey,
@@ -123,12 +125,9 @@ function validateAgents(value: unknown): string | null {
 	return null;
 }
 
-function validateHumans(value: unknown, legacyPluginPresent: boolean, storedSlugs: ReadonlySet<string>): string | null {
+function validateHumans(value: unknown, storedSlugs: ReadonlySet<string>): string | null {
 	if (!isRecord(value)) return "humans must be an object.";
-	if (!HUMAN_MODES.includes(value.mode as HumanMode)) return "Invalid humans.mode.";
-	if (value.mode === "stripe" && legacyPluginPresent) {
-		return "Stripe mode cannot be enabled while the legacy membership plugin is active. Use delegate mode.";
-	}
+	if (value.mode !== "off" && value.mode !== "stripe") return "Choose Off or Stripe memberships.";
 	const plans = normalizeHumanPlans(value.plans);
 	if (!plans) return "humans.plans must be a valid plan catalog with unique slugs.";
 	// New or renamed slugs must form valid audience segments. Stored ones keep saving and
@@ -152,8 +151,9 @@ export async function settingsHandler(routeCtx: RouteContext, ctx: PluginContext
 	}
 
 	const body = isRecord(routeCtx.input) ? routeCtx.input : {};
+	if (body.humans !== undefined && (await loadSettings(ctx)).humans.mode === "migration-required") return { ok: false, error: "Complete the reviewed offline migration before changing member access." };
 	const error = body.agents !== undefined ? validateAgents(body.agents) : null;
-	const humanError = body.humans !== undefined ? validateHumans(body.humans, body.legacyPluginPresent === true || await ctx.kv?.get("state:legacyPluginPresent") === true, await storedPlanSlugs(ctx)) : null;
+	const humanError = body.humans !== undefined ? validateHumans(body.humans, await storedPlanSlugs(ctx)) : null;
 	if (error || humanError) return { ok: false, error: error || humanError };
 	for (const field of ["stripeSecretKey", "stripePublishableKey", "stripeAccountId", "stripeEnvironment"] as const) {
 		if (body[field] !== undefined && typeof body[field] !== "string") return { ok: false, error: `${field} must be a string.` };
@@ -169,7 +169,6 @@ export async function settingsHandler(routeCtx: RouteContext, ctx: PluginContext
 			catch { return { ok: false, error: `Invalid ${field}.` }; }
 		}
 	}
-	// Both the runtime report and the older caller hint refuse double-gating.
 	if (body.disconnect === true) {
 		await Promise.all([
 			ctx.settings.delete("stripeSecretKey"),

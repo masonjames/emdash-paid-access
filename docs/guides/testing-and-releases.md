@@ -87,7 +87,7 @@ Test the built artifact in a fresh EmDash site, then in the intended host stack:
 - Editor permission behavior and actual saved rules.
 - Invalid payment/access-service failures, with no protected body returned.
 - [Paid-then-unpaid cache isolation](hosting-and-caching.md) through the public host.
-- Legacy delegation, if used; registry core plus companion, if that mode is used.
+- Native member sign-in and pricing with the old plugin absent; migration-required configurations must stay locked. Also verify registry core plus companion if that mode is used.
 
 Record version, source commit, artifact hash, host/runtime versions, expected
 outcomes, and observed results. Mocked responses, a successful build, and a
@@ -112,10 +112,13 @@ the original Git history; use a Git checkout when preparing a contribution.
 
 ## Release channels
 
-Public source, npm, and the EmDash registry are separate delivery steps. The
-source is public, `0.1.0-beta.2` is the current npm beta, and the EmDash
-registry remains unpublished. A Node site can use the npm core descriptor and
-companion without waiting for registry publication.
+Public source, npm, the EmDash registry, and deployed hosts are separate
+delivery steps. This source revision's native integration is a local candidate,
+not published or deployed. The recorded `0.1.0-beta.2` release and its demo
+evidence apply to earlier work. Record fresh artifact and host evidence before
+qualifying this candidate; never reuse a published version for changed bytes.
+A Node site can use a package's core descriptor and companion without registry
+publication.
 
 ### Prepare the npm beta
 
