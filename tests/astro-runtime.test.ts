@@ -5,6 +5,7 @@ const runtimeCall = vi.hoisted(() => vi.fn(async (_id: string, _method: string, 
 vi.mock("emdash/middleware", () => ({ withEmDashRuntime: async (run: (runtime: { handlePluginApiRoute: typeof runtimeCall }) => unknown) => run({ handlePluginApiRoute: runtimeCall }) }));
 import { callPlugin, callPublicPlugin, createPaidAccess, resetRuntimeForTests, type HumanDecision } from "../src/astro/runtime.js";
 import { resetCoexistenceCacheForTests } from "../src/coexistence.js";
+import options from "./fixtures/paid-access-config.js";
 import { resolveOptions } from "../src/astro/options.js";
 
 const open: HumanDecision = { restricted: false, hasAccess: true, authenticated: false, email: null, requiredPlanSlugs: [], requiredProductIds: [], humanMode: "stripe" };
@@ -404,4 +405,26 @@ it("bounds a hung identity/entitlement resolution", async () => {
 		await vi.advanceTimersByTimeAsync(1501);
 		expect(await result).toBe("deny");
 	} finally { vi.useRealTimers(); }
+});
+
+
+it("verifies coexistence before registering either host-paid HTTP entrypoint", async () => {
+ const { onRequest } = await import("../src/astro/middleware.js");
+ const { locals, privateCall, publicCall } = setup();
+ const context = { locals: { ...locals, pluginPaymentAdapter: { prepare: vi.fn() } }, request, cookies: { get: () => undefined } };
+ options.hostPayments = true;
+ try {
+  await onRequest(context as unknown as Parameters<typeof onRequest>[0], async () => {
+   expect(publicCall).toHaveBeenCalled();
+   expect(privateCall.mock.calls.some(call=>call[2]==="coexistence/report")).toBe(true);
+   expect(context.locals).toHaveProperty("pluginPayments.paid-access/agent/read");
+   return new Response("public page");
+  });
+  resetRuntimeForTests(); resetCoexistenceCacheForTests();
+  publicCall.mockRejectedValueOnce(new Error("unavailable"));
+  await onRequest(context as unknown as Parameters<typeof onRequest>[0], async () => {
+   expect(context.locals).not.toHaveProperty("pluginPayments.paid-access/agent/read");
+   return new Response("public page");
+  });
+ } finally { options.hostPayments = false; }
 });

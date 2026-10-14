@@ -19,6 +19,7 @@ export async function paidReadQuote(route: RouteContext, ctx: PluginContext) {
 	if (!("rules" in result) || !result.agents || result.agents.rail !== "origin-x402") throw new Error("Agent policy unavailable");
 	const access = resolveAccess({ policies: result.rules.map(rule => rule.policy), audience: "agent", agentsMode: result.agents.mode, freeByDefault: result.agents.freeByDefault });
 	if (access.agent !== "granted" && access.agent !== "payment-required") return { status: access.agent === "subscriber-only" ? 403 as const : 404 as const };
+	if (access.agent === "granted" && await ctx.kv?.get("state:legacyPluginPresent") !== false) throw new Error("Membership coexistence must be verified before a free read");
 	const price = access.agent === "granted" ? null : result.price;
 	if (access.agent === "payment-required" && !price) throw new Error("Entry has no price");
 	const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify({ rules: result.rules, agents: result.agents })));

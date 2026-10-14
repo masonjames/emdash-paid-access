@@ -9,7 +9,15 @@ import { createPaidAccess } from "./runtime.js";
 export const onRequest = defineMiddleware(async (context, next) => {
 	context.locals.paidAccess = createPaidAccess(context.locals, context.request, context.cookies.get("phb_session")?.value ?? null, options);
 	if (options.hostPayments && context.locals.pluginPaymentAdapter) {
-		context.locals.pluginPayments = { ...context.locals.pluginPayments, "paid-access/agent/read": { adapter: context.locals.pluginPaymentAdapter, provider: "paid-access", collections: options.collections } };
+		try {
+			// Both the native alias and generic HTTP route need the same coexistence
+			// check before any free quote can bypass the human reader provider.
+			await context.locals.paidAccess.detectLegacy();
+			context.locals.pluginPayments = { ...context.locals.pluginPayments, "paid-access/agent/read": { adapter: context.locals.pluginPaymentAdapter, provider: "paid-access", collections: options.collections } };
+		} catch {
+			// No registration means unavailable paid reads; public pages can still run.
+			if (context.locals.pluginPayments) delete context.locals.pluginPayments["paid-access/agent/read"];
+		}
 	}
 	const response = await next();
 	// Child components cannot reliably set the page response headers during
