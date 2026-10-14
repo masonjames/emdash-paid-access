@@ -5,6 +5,7 @@ import type { EnforceResult, X402Enforcer } from "@emdash-cms/x402";
 import { portableTextToMarkdown, type PortableTextBlock } from "emdash/client";
 
 import { TEST_FACILITATOR_URL } from "./astro/options.js";
+import { markdownDiscoveryExtensions } from "./discovery.js";
 import { CONTENT_SIGNAL, resolveAccess } from "./resolver.js";
 import { highestAgentPrice } from "./restrictions.js";
 import type {
@@ -113,13 +114,15 @@ export async function serveAgentEntry(input: {
 
 	let enforced: Awaited<ReturnType<X402Enforcer["enforce"]>>;
 	try {
-		enforced = await input.enforcer.enforce(input.request, {
+		const paymentOptions = {
 			price,
 			payTo: input.settings.payTo,
 			network: input.settings.network,
 			description: input.entry.title,
 			mimeType: "text/markdown",
-		});
+			extensions: markdownDiscoveryExtensions,
+		};
+		enforced = await input.enforcer.enforce(input.request, paymentOptions);
 	} catch (error) {
 		input.log?.error("Agent payment enforcement failed", error);
 		return empty(503);

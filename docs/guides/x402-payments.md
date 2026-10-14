@@ -60,7 +60,12 @@ curl -i https://example.test/agents/posts/example.md
 ```
 
 The expected result for a configured paid entry is 402 with payment requirements
-and no protected body. `HEAD` deliberately removes payment headers before
+and no protected body. The companion supplies a Bazaar discovery extension describing
+a GET request with no required query parameters and a Markdown response. Its example
+is static synthetic text, never an excerpt from the protected article. Emitting this
+extension in both the JSON body and `PAYMENT-REQUIRED` header requires an
+`@emdash-cms/x402` host with the discovery-extension patch; the local compatibility
+candidate pins that patch. Stock 1.2.0 does not forward these extensions. `HEAD` deliberately removes payment headers before
 enforcement so it cannot settle a payment for a response with no body.
 
 For a real **testnet** purchase, the source repository provides a helper. Load

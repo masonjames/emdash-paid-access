@@ -43,6 +43,20 @@ function rule(policy: ContentRestrictionRecord["policy"], agentPrice: string | n
 }
 
 describe("agent Markdown response", () => {
+	it("supplies static Bazaar discovery without exposing protected content", async () => {
+		const enforce = vi.fn(async (_request: Request, _options: unknown) => new Response("{}", { status: 402 }));
+		const response = await serveAgentEntry({ request: new Request("https://example.test/agents/posts/paid-post.md"), entry,
+			rules: [rule("agents-pay")], settings, enforcer: { enforce } as unknown as X402Enforcer, receipts: { put: vi.fn() } });
+		expect(response.status).toBe(402);
+		expect(enforce).toHaveBeenCalledWith(expect.any(Request), expect.objectContaining({
+			extensions: { bazaar: expect.objectContaining({
+				info: { input: { type: "http", method: "GET", queryParams: {} }, output: expect.objectContaining({ type: "text", format: "text/markdown" }) },
+				schema: expect.objectContaining({ required: ["input", "output"] }),
+			}) },
+		}));
+		expect(JSON.stringify(enforce.mock.calls[0]?.[1])).not.toContain("Secret body");
+	});
+
 	it("builds Markdown before enforce and serves it after a receipt write fails", async () => {
 		const events: string[] = [];
 		const content = [...entry.content];
