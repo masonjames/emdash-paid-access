@@ -20,7 +20,7 @@ class ValidationError extends Error {}
 
 const paidPolicies = ["agents-pay", "members"];
 const memberPolicies = ["members-only", "members"];
-const legacyMessage = "An older rule needs migration before editing. Ask the site maintainer to consolidate this entry’s slug and ID rules in one database transaction, preserving the strongest policy.";
+const legacyMessage = "An older rule needs migration before editing. Ask your site maintainer to merge the older rules while preserving access restrictions.";
 const delegatedMessage = "This entry also has a Paid Access membership rule. Editing here could change website access. Ask the site maintainer to review it under Advanced rules before changing the machine-readable copy.";
 
 export async function editorPanel(route: RouteContext, ctx: PluginContext): Promise<BlockResponse> {
@@ -67,7 +67,7 @@ export async function editorPanel(route: RouteContext, ctx: PluginContext): Prom
 		const match = /^editor:policy\/([^/]*)\/[^/]+$/.exec(submittedBlock);
 		const revision = match ? decodeURIComponent(match[1]) : undefined;
 		const stale = () => {
-			toast = { type: "error", message: "Access changed since this form loaded. Current stored values have been reloaded; review them and save again." };
+			toast = { type: "error", message: "Changed elsewhere. Stored values reloaded; review and save again." };
 		};
 		const blocked = editingBlocked();
 		if (blocked) toast = { type: "error", message: blocked };
@@ -106,7 +106,7 @@ export async function editorPanel(route: RouteContext, ctx: PluginContext): Prom
 				typed = undefined;
 				blockId = freshId();
 				if (!applied) stale();
-				else toast = { type: "success", message: "Policy saved. Cache activation is pending verification." };
+				else toast = { type: "success", message: "Access saved." };
 			} catch (error) {
 				// Only our validation messages are safe to display; storage errors may contain secrets.
 				const message = error instanceof ValidationError ? error.message : "Save could not be confirmed. Your values are retained; reload before retrying if the write may have completed.";
@@ -122,9 +122,9 @@ export async function editorPanel(route: RouteContext, ctx: PluginContext): Prom
 	const blocks: Block[] = [
 		context(`Website access: ${delegated ? "Controlled by Restrict With Stripe" : memberPolicies.includes(effective.policy) ? "Members only" : "Public"}`),
 		context(`Machine-readable copy (saved policy): ${machine}`),
-		context("Stored policy · cache activation unverified."),
 	];
 	const details: Block[] = [
+		context("Stored policy · cache activation unverified."),
 		{ type: "fields", fields: [{ label: "Strongest entry/category policy", value: rules.length ? labels[effective.policy] : "Site defaults (no entry or taxonomy rule)" }] },
 		context(`Public preview: excerpts ${settings.showExcerpts ? "enabled" : "disabled"}. The site controls which fields stay public; that field list is unverified here.`),
 		context("Other restrictions, including translated entries, may block the configured read."),
@@ -132,7 +132,7 @@ export async function editorPanel(route: RouteContext, ctx: PluginContext): Prom
 	for (const rule of rules.filter(r => "taxonomyName" in r)) {
 		details.push(context(`Inherited from ${rule.taxonomyName}:${rule.termId}: ${labels[rule.policy]}. The strongest rule wins; an entry preset cannot weaken it.`));
 	}
-	if (delegated) blocks.push(context("Restrict With Stripe controls website access. Choose a paid copy or use inherited defaults here. A separate Not offered override is unavailable."));
+	if (delegated) blocks.push(context("Choose a paid copy or use inherited defaults. A separate Not offered override is unavailable."));
 	else if (neverFree) blocks.push(context("Restrict With Stripe is active. Review its rule in the Restrict panel; free machine-readable reads are disabled."));
 	const blocked = editingBlocked();
 	if (blocked) return { blocks: [...blocks, banner(blocked, "alert"), { type: "accordion", label: "Policy details", blocks: details }, { type: "actions", elements: [link("Advanced rules", "/rules")] }], ...(toast ? { toast } : {}) };
@@ -142,10 +142,10 @@ export async function editorPanel(route: RouteContext, ctx: PluginContext): Prom
 		if (paidPolicies.includes(option.value)) fields.push({ type: "text_input", action_id: `price_${option.value}`, label: "Price per read (USD)", placeholder: "$0.05", initial_value: typed ? str(typed[`price_${option.value}`]) : own?.agentPrice ?? "", condition: { field: "preset", eq: option.value } });
 		if (memberPolicies.includes(option.value) && settings.humans.plans.length) fields.push({ type: "checkbox", action_id: `plans_${option.value}`, label: "Membership plans (choose at least one)", options: settings.humans.plans.filter(p => p.stripeProductId).map(p => ({ value: p.slug, label: p.name })), initial_value: (typed && Array.isArray(typed[`plans_${option.value}`]) ? (typed[`plans_${option.value}`] as unknown[]).filter((v): v is string => typeof v === "string") : own?.requiredPlanSlugs ?? []).filter(v => settings.humans.plans.some(p => p.slug === v && p.stripeProductId)), condition: { field: "preset", eq: option.value } });
 	}
+	if (effective.policy === "agents-pay") blocks.push(banner(delegated ? "If the website page is public, its HTML can be read without buying this copy." : AGENTS_PAY_WARNING, "alert"));
 	blocks.push({ type: "form", block_id: blockId, fields, submit: { action_id: "editor:save", label: "Save access" } });
 	if (own && !options.some(o => o.value === own.policy)) blocks.push(banner("The stored preset is unavailable with the current provider settings. It remains in force until you explicitly choose and save an available option.", "alert"));
 	details.push(context(delegated ? "Use defaults removes only this entry’s paid-copy rule; inherited rules still apply." : "Use defaults inherits site/category rules. Public explicitly offers a free copy."));
-	if (effective.policy === "agents-pay") blocks.push(banner(delegated ? "If the website page is public, its HTML can be read without buying this copy." : AGENTS_PAY_WARNING, "alert"));
 	if (settings.humans.mode === "off" && memberPolicies.includes(effective.policy)) blocks.push(banner("Member access is off; the stored member restriction cannot be unlocked.", "alert"));
 	details.push(context("Host payment setup is unverified here. Missing configuration keeps paid reads unavailable. See Settings."));
 	blocks.push({ type: "accordion", label: "Policy details", blocks: details }, { type: "actions", elements: [link("Settings", "/settings"), link("Advanced rules", "/rules")] });

@@ -28,7 +28,7 @@ export const GET: APIRoute = async ({ params, locals, request, site }) => {
 			const url = new URL(request.url);
 			url.searchParams.set("collection", params.collection);
 			url.searchParams.set("contentId", String(metadata.entry.data.id ?? metadata.entry.id));
-			return locals.emdash.handlePublicPaidPluginRoute("paid-access", "agent/read", new Request(url, { headers: request.headers }), locals.pluginPayments?.["paid-access/agent/read"]);
+			return locals.emdash.handlePublicPaidPluginRoute("paid-access", "agent/read", new Request(url, { method: request.method, headers: request.headers }), locals.pluginPayments?.["paid-access/agent/read"]);
 		}
 		const { entry, isPreview } = await (locals.paidAccess?.trustedContent ?? (<T>(run: () => T) => run()))(() => getEmDashEntry<string, { id?: string; status?: string; title?: string; content?: PortableTextBlock[] }>(params.collection!, params.slug!));
 		// getEmDashEntry can serve preview drafts; agent endpoints must never do so.

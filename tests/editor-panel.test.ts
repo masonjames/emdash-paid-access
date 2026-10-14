@@ -32,7 +32,7 @@ describe("native complete policy form", () => {
 		expect(cas).toHaveBeenCalledTimes(1); expect(kv).not.toHaveBeenCalled();
 		expect(form(result).fields.map(f => f.action_id)).toEqual(form(panel).fields.map(f => f.action_id));
 		expect(form(result).block_id).not.toBe(form(panel).block_id);
-		expect(result.toast?.message).toContain("pending verification");
+		expect(result.toast?.message).toContain("Access saved.");
 	});
 
 	it("distinguishes defaults, explicit free, and inherited strongest rules", async () => {
@@ -82,7 +82,7 @@ describe("native complete policy form", () => {
 		const results = await Promise.all([save(ctx, panel, { preset: "public" }), save(ctx, panel, { preset: "agents-pay", "price_agents-pay": "0.09" })]);
 		expect(results.filter(r => r.toast?.type === "success")).toHaveLength(1);
 		const stale = results.find(r => r.toast?.type === "error")!;
-		expect(stale.toast?.message).toContain("Current stored values have been reloaded");
+		expect(stale.toast?.message).toContain("Stored values reloaded");
 		expect(currentPreset(stale)).toMatchObject({ initial_value: (await get(ctx) as { policy: string }).policy });
 		expect(form(stale).block_id).not.toBe(form(panel).block_id);
 	});
@@ -103,7 +103,7 @@ describe("native complete policy form", () => {
 			const before = [...ctx.storage.restrictions.data];
 			const blocked = await save(ctx, panel, { preset: "defaults" });
 			expect(blocked.blocks.some(b => b.type === "form")).toBe(false);
-			expect(JSON.stringify(blocked)).toContain("one database transaction");
+			expect(JSON.stringify(blocked)).toContain("merge the older rules");
 			expect([...ctx.storage.restrictions.data]).toEqual(before);
 		}
 	});
@@ -112,7 +112,7 @@ describe("native complete policy form", () => {
 		const ctx = fixture({ ...paid, humansMode: "delegate" });
 		const panel = await load(ctx);
 		expect(currentPreset(panel)).toMatchObject({ options: [{ value: "defaults", label: "Use defaults" }, { value: "agents-pay", label: "Paid machine-readable copy" }] });
-		expect(JSON.stringify(panel)).toContain("Restrict With Stripe controls website access");
+		expect(JSON.stringify(panel)).toContain("Restrict With Stripe");
 		for (const preset of ["public", "members", "members-only", "none"]) expect((await save(ctx, panel, { preset })).toast?.type).toBe("error");
 		await save(ctx, panel, { preset: "agents-pay", "price_agents-pay": "0.01" });
 		expect(await get(ctx)).toMatchObject({ policy: "agents-pay", requiredPlanSlugs: [] });

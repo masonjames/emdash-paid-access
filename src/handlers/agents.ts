@@ -1,7 +1,8 @@
-import { readTranslationGroup } from "./reader-group.js";
 // Copyright 2026 Mason James.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+
+import { readTranslationGroup } from "./reader-group.js";
 import type { PluginContext } from "emdash/plugin";
 import type { RouteContext, PaidAccessSettings } from "../types.js";
 

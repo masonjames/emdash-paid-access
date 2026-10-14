@@ -1,7 +1,8 @@
-import { resolveReaderAccess } from "../resolver.js";
 // Copyright 2026 Mason James.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+
+import { resolveReaderAccess } from "../resolver.js";
 import type {} from "emdash/locals";
 import type {} from "@emdash-cms/x402/locals";
 import { ABSENT_TTL_MS, failClosedHumanDecision, legacyAbsentSince, legacySession, probeLegacyPlugin, resolveHumanMode, unionAccessDecisions, type PublicPluginRouteHandler } from "../coexistence.js";

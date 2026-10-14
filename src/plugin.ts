@@ -1,9 +1,10 @@
-import { paidReadQuote, paidReadHandler, paidReadReceipt } from "./handlers/paid-read.js";
-import { readerGroupHandler } from "./handlers/reader-group.js";
 // Copyright 2026 Stranger Studios.
 // Modified by Mason James, 2026-09-23.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+
+import { paidReadQuote, paidReadHandler, paidReadReceipt } from "./handlers/paid-read.js";
+import { readerGroupHandler } from "./handlers/reader-group.js";
 import { adminHandler, editorHandler, coexistenceReport } from "./admin/index.js";
 
 import type { SandboxedPlugin } from "emdash/plugin";
