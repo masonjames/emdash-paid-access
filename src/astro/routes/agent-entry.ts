@@ -21,13 +21,22 @@ const empty = (status: number) => new Response(null, { status, headers: { "Cache
 export const GET: APIRoute = async ({ params, locals, request, site }) => {
 	if (!params.collection || !options.collections.includes(params.collection) || !params.slug) return empty(404);
 	try {
-		const { entry, isPreview } = await getEmDashEntry<string, { id?: string; status?: string; title?: string; content?: PortableTextBlock[] }>(params.collection, params.slug);
+		if (options.hostPayments) {
+			const { dispatchPluginApiRequest } = await import("emdash/plugin-payments");
+			const metadata = await (locals.paidAccess?.trustedPolicyMetadata ?? (<T>(run: () => T) => run()))(() => getEmDashEntry(params.collection!, params.slug!));
+			if (!metadata.entry || metadata.isPreview || metadata.entry.data.status !== "published" || !locals.emdash) return empty(404);
+			const url = new URL(request.url);
+			url.searchParams.set("collection", params.collection);
+			url.searchParams.set("contentId", String(metadata.entry.data.id ?? metadata.entry.id));
+			return dispatchPluginApiRequest({ runtime: locals.emdash, pluginId: "paid-access", path: "agent/read", request: new Request(url, { headers: request.headers }), paymentRegistration: locals.pluginPayments?.["paid-access/agent/read"] });
+		}
+		const { entry, isPreview } = await (locals.paidAccess?.trustedContent ?? (<T>(run: () => T) => run()))(() => getEmDashEntry<string, { id?: string; status?: string; title?: string; content?: PortableTextBlock[] }>(params.collection!, params.slug!));
 		// getEmDashEntry can serve preview drafts; agent endpoints must never do so.
 		if (!entry || isPreview || entry.data.status !== "published") return empty(404);
 		const id = entry.data.id ?? entry.id;
 		// The core must know whether Restrict With Stripe is active before it may serve anything free.
 		await locals.paidAccess.detectLegacy();
-		const result = await callPlugin<{ rules: ContentRestrictionRecord[]; agents: AgentSettings; canonicalUrl: string | null }>(locals, "agent/context", { collection: params.collection, contentId: id, slug: params.slug }, request);
+		const result = await (locals.paidAccess?.trustedContent ?? (<T>(run: () => T) => run()))(() => callPlugin<{ rules: ContentRestrictionRecord[]; agents: AgentSettings; canonicalUrl: string | null }>(locals, "agent/context", { collection: params.collection, contentId: id, slug: params.slug, ...(options.readerProtection ? { readerProtection: true } : {}) }, request));
 		if (!result.ok) {
 			console.error(`[paid-access] agent/context failed: ${result.code}`);
 			return empty(503);

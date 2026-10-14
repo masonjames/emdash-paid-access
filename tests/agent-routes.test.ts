@@ -104,6 +104,21 @@ describe("agent plugin routes", () => {
 		await expect(invoke(offersHandler, { ...draft, content: { get: async () => { throw new Error("unavailable"); } } })).resolves.toEqual({ items: [], nextCursor: null });
 	});
 
+	it("omits an offer whose translated sibling is members-only", async () => {
+		const sibling = { ...paidRule, contentId: "2", policy: "members-only", agentPrice: null };
+		const ctx = {
+			request: new Request("https://site.test/offers"), settings: { get: kvGet },
+			content: {
+				get: async () => ({ id: "1", status: "published", slug: "paid", data: { title: "Paid post" } }),
+				getTranslations: async () => ({ translationGroup: "group", translations: [{ id: "1", slug: "paid", locale: "en" }, { id: "2", slug: "paye", locale: "fr" }] }),
+			},
+			storage: {
+				restrictions: { query: async () => ({ items: [{ id: "posts:1", data: paidRule }] }), get: async (key: string) => key === "posts:1" ? paidRule : key === "posts:2" ? sibling : null },
+				taxonomy_restrictions: { query: async () => ({ items: [] }) },
+			},
+		};
+		expect(await invoke(offersHandler, ctx)).toEqual({ items: [], nextCursor: null });
+	});
 	it("returns the receipts ledger", async () => {
 		const items = [{ id: "receipt:tx", data: { transaction: "tx" } }];
 		const ctx = {

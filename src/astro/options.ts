@@ -7,6 +7,9 @@ import { sanitizeRedirectPath } from "../utils.js";
 export const TEST_FACILITATOR_URL = "https://x402.org/facilitator";
 
 export interface PaidAccessOptions {
+	/** Requires host readerProtection bindings and emdash/reader-access support. */
+	readerProtection?: boolean;
+	hostPayments?: boolean;
 	collections?: string[];
 	agentRoutePrefix?: string;
 	accountPath?: string;
@@ -15,7 +18,7 @@ export interface PaidAccessOptions {
 	legacyPluginId?: string;
 }
 export function resolveOptions(input: PaidAccessOptions = {}): Required<PaidAccessOptions> {
-	const options = { collections: ["posts"], agentRoutePrefix: "/agents", accountPath: "/account", injectAccountRoutes: true,
+	const options = { hostPayments: false, readerProtection: false, collections: ["posts"], agentRoutePrefix: "/agents", accountPath: "/account", injectAccountRoutes: true,
 		facilitatorUrl: TEST_FACILITATOR_URL, legacyPluginId: LEGACY_PLUGIN_ID, ...input };
 	for (const key of ["agentRoutePrefix", "accountPath"] as const) {
 		const path = options[key];

@@ -13,7 +13,7 @@ export function paidAccessAstro(input: PaidAccessOptions = {}): AstroIntegration
 			const options = resolveOptions(input);
 			updateConfig({
 				// These are placeholders: every enforcement call supplies payTo/network from plugin settings.
-				integrations: [x402({ payTo: "0x0000000000000000000000000000000000000000", network: "eip155:84532", facilitatorUrl: options.facilitatorUrl })],
+				integrations: options.hostPayments ? [] : [x402({ payTo: "0x0000000000000000000000000000000000000000", network: "eip155:84532", facilitatorUrl: options.facilitatorUrl })],
 				vite: {
 					plugins: [{ name: "paid-access-config", resolveId: id => id === "virtual:paid-access/config" ? "\0virtual:paid-access/config" : undefined,
 						load: id => id === "\0virtual:paid-access/config" ? `export default ${JSON.stringify(options)}` : undefined }],
@@ -22,6 +22,7 @@ export function paidAccessAstro(input: PaidAccessOptions = {}): AstroIntegration
 				},
 			});
 			addMiddleware({ entrypoint: "emdash-paid-access/astro/middleware", order: "post" });
+			if (options.readerProtection) addMiddleware({ entrypoint: "emdash-paid-access/astro/reader-middleware", order: "post" });
 			injectRoute({ pattern: `${options.agentRoutePrefix}/[collection]/[slug].md`, entrypoint: "emdash-paid-access/astro/routes/agent-entry", prerender: false });
 			injectRoute({ pattern: `${options.agentRoutePrefix}/offers.json`, entrypoint: "emdash-paid-access/astro/routes/offers", prerender: false });
 			if (options.injectAccountRoutes) {
@@ -34,3 +35,5 @@ export function paidAccessAstro(input: PaidAccessOptions = {}): AstroIntegration
 	} };
 }
 export default paidAccessAstro;
+
+export { markdownDiscoveryExtensions } from "../discovery.js";

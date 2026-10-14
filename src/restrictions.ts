@@ -1,3 +1,4 @@
+import type { PluginContext } from "emdash/plugin";
 // Copyright 2026 Mason James.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
@@ -7,13 +8,13 @@ import type {
 	TaxonomyRestrictionRecord,
 } from "./types.js";
 import {
+	isRecord,
 	normalizeStringArray,
 	nowIso,
 	parsePlanSlugs,
 	unwrapStoredRecord,
 } from "./utils.js";
 
-const POLICIES: AccessPolicy[] = ["public", "agents-pay", "members", "members-only"];
 
 export function normalizeAgentPrice(value: unknown): string | null {
 	if (value == null || value === "") return null;
@@ -42,16 +43,26 @@ export function highestAgentPrice(records: Array<{ policy: AccessPolicy; agentPr
 	}, null);
 }
 
-function normalizePolicy(value: unknown, requiredPlanSlugs: string[], productIds: string[]): AccessPolicy {
-	if (POLICIES.includes(value as AccessPolicy)) return value as AccessPolicy;
-	return requiredPlanSlugs.length > 0 || productIds.length > 0 ? "members" : "public";
+function normalizePolicy(value: unknown, requiredPlanSlugs: string[], productIds: string[]): AccessPolicy | null {
+	if (value === "public" || value === "agents-pay" || value === "members" || value === "members-only") return value;
+	// Legacy membership records omitted policy but carried explicit nonempty requirements.
+	if (value === undefined && (requiredPlanSlugs.length > 0 || productIds.length > 0)) return "members";
+	return null;
+}
+
+function validRequirements(data: Record<string, unknown>): boolean {
+	return ["requiredPlanSlugs", "productIds"].every(key => data[key] === undefined ||
+		(Array.isArray(data[key]) && data[key].every((value: unknown) => typeof value === "string" && value.trim().length > 0))) &&
+		(data.agentPrice == null || data.agentPrice === "" || normalizeAgentPrice(data.agentPrice) !== null);
 }
 
 export function normalizeContentRestriction(record: unknown): ContentRestrictionRecord | null {
-	const data = unwrapStoredRecord<ContentRestrictionRecord>(record);
-	if (!data || typeof data.contentId !== "string" || typeof data.collectionSlug !== "string") return null;
+	const data = unwrapStoredRecord<unknown>(record);
+	if (!isRecord(data) || !validRequirements(data) || typeof data.contentId !== "string" || typeof data.collectionSlug !== "string") return null;
 	const requiredPlanSlugs = parsePlanSlugs(data.requiredPlanSlugs);
 	const productIds = normalizeStringArray(data.productIds);
+	const policy = normalizePolicy(data.policy, requiredPlanSlugs, productIds);
+	if (!policy) return null;
 	const createdAt = typeof data.createdAt === "string" ? data.createdAt : nowIso();
 	return {
 		contentId: data.contentId,
@@ -60,7 +71,7 @@ export function normalizeContentRestriction(record: unknown): ContentRestriction
 		title: typeof data.title === "string" ? data.title : null,
 		requiredPlanSlugs,
 		productIds,
-		policy: normalizePolicy(data.policy, requiredPlanSlugs, productIds),
+		policy,
 		agentPrice: normalizeAgentPrice(data.agentPrice),
 		passEligible: data.passEligible === true,
 		source: "manual",
@@ -70,17 +81,19 @@ export function normalizeContentRestriction(record: unknown): ContentRestriction
 }
 
 export function normalizeTaxonomyRestriction(record: unknown): TaxonomyRestrictionRecord | null {
-	const data = unwrapStoredRecord<TaxonomyRestrictionRecord>(record);
-	if (!data || typeof data.taxonomyName !== "string" || typeof data.termId !== "string") return null;
+	const data = unwrapStoredRecord<unknown>(record);
+	if (!isRecord(data) || !validRequirements(data) || typeof data.taxonomyName !== "string" || typeof data.termId !== "string") return null;
 	const requiredPlanSlugs = parsePlanSlugs(data.requiredPlanSlugs);
 	const productIds = normalizeStringArray(data.productIds);
+	const policy = normalizePolicy(data.policy, requiredPlanSlugs, productIds);
+	if (!policy) return null;
 	const createdAt = typeof data.createdAt === "string" ? data.createdAt : nowIso();
 	return {
 		taxonomyName: data.taxonomyName,
 		termId: data.termId,
 		requiredPlanSlugs,
 		productIds,
-		policy: normalizePolicy(data.policy, requiredPlanSlugs, productIds),
+		policy,
 		agentPrice: normalizeAgentPrice(data.agentPrice),
 		passEligible: data.passEligible === true,
 		createdAt,
@@ -89,16 +102,23 @@ export function normalizeTaxonomyRestriction(record: unknown): TaxonomyRestricti
 }
 
 export async function getEntryRestrictions(
-	ctx: any,
+	ctx: Pick<PluginContext, "storage" | "taxonomies">,
 	collectionSlug: string,
 	contentId: string,
 	slug?: string | null,
 ): Promise<Array<ContentRestrictionRecord | TaxonomyRestrictionRecord>> {
 	const records: Array<ContentRestrictionRecord | TaxonomyRestrictionRecord> = [];
-	const direct = normalizeContentRestriction(await ctx.storage.restrictions.get(`${collectionSlug}:${contentId}`));
+	const readContent = async (key: string) => {
+		const raw = await ctx.storage.restrictions.get(`${collectionSlug}:${key}`);
+		if (raw == null) return null;
+		const rule = normalizeContentRestriction(raw);
+		if (!rule || rule.collectionSlug !== collectionSlug || (rule.contentId !== contentId && rule.contentId !== key && rule.slug !== key)) throw new Error("Content access metadata is invalid.");
+		return rule;
+	};
+	const direct = await readContent(contentId);
 	if (direct) records.push(direct);
 	if (slug && slug !== contentId) {
-		const legacy = normalizeContentRestriction(await ctx.storage.restrictions.get(`${collectionSlug}:${slug}`));
+		const legacy = await readContent(slug);
 		if (legacy) records.push(legacy);
 	}
 
@@ -108,10 +128,14 @@ export async function getEntryRestrictions(
 		return records;
 	}
 
-	for (const term of await ctx.taxonomies.getEntryTerms(collectionSlug, contentId)) {
-		const rule = normalizeTaxonomyRestriction(
-			await ctx.storage.taxonomy_restrictions.get(`${term.taxonomy}:${term.id}`),
-		);
+	const terms = await ctx.taxonomies.getEntryTerms(collectionSlug, contentId);
+	if (!Array.isArray(terms)) throw new Error("Taxonomy metadata is invalid.");
+	for (const term of terms) {
+		if (!term || typeof term.taxonomy !== "string" || !term.taxonomy || typeof term.id !== "string" || !term.id) throw new Error("Taxonomy metadata is invalid.");
+		const raw = await ctx.storage.taxonomy_restrictions.get(`${term.taxonomy}:${term.id}`);
+		if (raw == null) continue;
+		const rule = normalizeTaxonomyRestriction(raw);
+		if (!rule || rule.taxonomyName !== term.taxonomy || rule.termId !== term.id) throw new Error("Taxonomy access metadata is invalid.");
 		if (rule) records.push(rule);
 	}
 	return records;

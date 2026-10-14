@@ -1,3 +1,4 @@
+import { readTranslationGroup } from "./reader-group.js";
 // Copyright 2026 Mason James.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
@@ -64,13 +65,17 @@ export async function offersHandler(routeCtx: RouteContext, ctx: PluginContext) 
 				// Only the rule stored under the entry's ID lists it, so a legacy slug-keyed copy can't list it twice.
 				if (!entry || entry.status !== "published" || !entry.slug || item.id !== `${rule.collectionSlug}:${entry.id}`) continue;
 				// List what the agent route will actually sell, at the price it will charge.
-				const rules = await getEntryRestrictions(ctx, rule.collectionSlug, entry.id, entry.slug);
-				const access = resolveAccess({ policies: rules.map(r => r.policy), audience: "agent", agentsMode: settings.agents.mode, freeByDefault: settings.agents.freeByDefault });
+				const translations = ctx.content.getTranslations
+					? (await readTranslationGroup(ctx, rule.collectionSlug, entry.id)).translations
+					: [{ id: entry.id, slug: entry.slug }];
+				const restrictions = (await Promise.all(translations.map(item => getEntryRestrictions(ctx, rule.collectionSlug, item.id, item.slug)))).flat();
+				const { rules, freeByDefault } = await forAgents(ctx, settings, restrictions);
+				const access = resolveAccess({ policies: rules.map(r => r.policy), audience: "agent", agentsMode: settings.agents.mode, freeByDefault });
 				const price = highestAgentPrice(rules);
 				if (access.agent !== "payment-required" || !price) continue;
 				items.push({
 					type: "content", collection: rule.collectionSlug, slug: entry.slug,
-					title: typeof entry.data.title === "string" ? entry.data.title : rule.title ?? "",
+					title: typeof entry.data.title === "string" ? entry.data.title : "",
 					price, policy: access.policy, network: settings.agents.network,
 					url: `${settings.agentRoutePrefix}/${encodeURIComponent(rule.collectionSlug)}/${encodeURIComponent(entry.slug)}.md`,
 				});
@@ -111,7 +116,10 @@ export async function agentContextHandler(routeCtx: RouteContext, ctx: PluginCon
 		(input.slug != null && typeof input.slug !== "string")) return routeError("BAD_REQUEST", "collection and contentId are required; slug must be a string.");
 	try {
 		const settings = await loadSettings(ctx);
-		const { rules, freeByDefault } = await forAgents(ctx, settings, await getEntryRestrictions(ctx, input.collection, input.contentId, input.slug as string | null | undefined));
+		const restrictions = input.readerProtection === true
+			? (await Promise.all((await readTranslationGroup(ctx, input.collection, input.contentId)).translations.map(item => getEntryRestrictions(ctx, String(input.collection), item.id, item.slug)))).flat()
+			: await getEntryRestrictions(ctx, input.collection, input.contentId, input.slug as string | null | undefined);
+		const { rules, freeByDefault } = await forAgents(ctx, settings, restrictions);
 		const canonicalUrl = await ctx.content?.getPublicUrl?.(input.collection, input.contentId).catch(() => null) ?? null;
 		return { canonicalUrl, rules: rules.map(({ policy, agentPrice }) => ({ policy, agentPrice })), agents: { ...settings.agents, freeByDefault }, price: highestAgentPrice(rules) };
 	} catch {

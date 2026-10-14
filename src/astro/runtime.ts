@@ -1,3 +1,4 @@
+import { resolveReaderAccess } from "../resolver.js";
 // Copyright 2026 Mason James.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
@@ -13,7 +14,7 @@ export type PluginLocals = { emdash?: { handlePluginApiRoute?: PublicPluginRoute
 export type PluginResult<T> = { ok: true; data: T } | { ok: false; code: string };
 export type HumanDecision = AccessDecision & { humanMode?: HumanMode; showExcerpts?: boolean; agentsSold?: boolean };
 export type PublicPlan = Pick<HumanPlan, "slug" | "name" | "description" | "monthlyLabel" | "yearlyLabel" | "trialLabel">;
-export type AccessInput = { collection: string; id: string; slug: string; requiredPlanSlugs?: string[] };
+export type AccessInput = { collection: string; id: string; slug: string; requiredPlanSlugs?: string[]; locale?: string; revision?: string };
 
 async function dispatch<T>(locals: PluginLocals, path: string, body: unknown, publicOnly: boolean, pluginId: string, request?: Request): Promise<PluginResult<T>> {
 	try {
@@ -59,7 +60,7 @@ function validEntitlements(value: unknown): value is Entitlements {
 		&& typeof value.authenticated === "boolean"
 		&& Array.isArray(value.planSlugs) && value.planSlugs.every(slug => typeof slug === "string");
 }
-const accessKey = (input: AccessInput) => JSON.stringify([input.collection, input.id, input.slug, input.requiredPlanSlugs ?? []]);
+const accessKey = (input: AccessInput) => JSON.stringify([input.collection, input.id, input.slug, input.requiredPlanSlugs ?? [], input.locale, input.revision]);
 
 let reported: Promise<boolean> | undefined;
 let reportedAbsentAt = 0;
@@ -103,7 +104,7 @@ export function createPaidAccess(locals: PluginLocals, request: Request, session
 	}
 	function memoizedAccess(input: AccessInput): Promise<HumanDecision> {
 		const key = accessKey(input);
-		if (!memo.has(key)) memo.set(key, access(input));
+		if (!memo.has(key)) memo.set(key, bounded(access(input), failClosedHumanDecision()));
 		return memo.get(key)!;
 	}
 	// One entitlements call per request, however many segments() calls there are. Rejects on any doubt.
@@ -121,14 +122,38 @@ export function createPaidAccess(locals: PluginLocals, request: Request, session
 	const segmentMemo = new Map<string, Promise<string[]>>();
 	async function segments(entry?: AccessInput): Promise<string[]> {
 		try {
-			const [reader, decision] = await Promise.all([readerSegments ??= readReaderSegments(), entry ? memoizedAccess(entry) : undefined]);
+			const [reader, decision] = await Promise.all([readerSegments ??= bounded<string[] | null>(readReaderSegments(), null).then(value => { if (value === null) throw new Error("Entitlements unavailable"); return value; }), entry ? memoizedAccess(entry) : undefined]);
 			// An entry decision that couldn't be verified fails the whole answer closed.
 			if (decision?.error) return [];
 			return [...new Set([...reader, ...(decision && canRenderBody(decision) ? ["entitled"] : [])])].sort();
 		} catch { return []; }
 	}
+
+	const groupMemo = new Map<string, Promise<HumanDecision>>();
+	async function groupAccess(resource: AccessInput & { locale: string; revision: string }): Promise<HumanDecision> {
+		const result = await callPlugin(locals, "reader/group", { collection: resource.collection, id: resource.id }, request);
+		if (!result.ok || result.data.ok !== true || typeof result.data.group !== "string" || !result.data.group || !Array.isArray(result.data.entries)) return failClosedHumanDecision();
+		const entries = result.data.entries;
+		if (!entries.length || entries.length > 100 || !entries.every(validGroupEntry) || !entries.some(item => item.id === resource.id && item.locale === resource.locale)) return failClosedHumanDecision();
+		if (new Set(entries.map(item => item.id)).size !== entries.length || new Set(entries.map(item => item.locale)).size !== entries.length) return failClosedHumanDecision();
+		// Sibling rules, including draft siblings, still own policy for the translated work.
+		const decisions = await Promise.all(entries.map(item => memoizedAccess({ ...resource, ...item, slug: item.slug ?? item.id })));
+		if (decisions.some(item => item.error)) return failClosedHumanDecision();
+		const combined = decisions.reduce((left, right) => ({ ...left, ...unionAccessDecisions(left, right) }));
+		return { ...combined, showExcerpts: decisions.every(item => !item.restricted || item.showExcerpts === true) };
+	}
+	function readerAccess(resource: AccessInput & { locale: string; revision: string }) {
+		const key = accessKey(resource);
+		if (!groupMemo.has(key)) groupMemo.set(key, bounded(groupAccess(resource), failClosedHumanDecision()));
+		return groupMemo.get(key)!;
+	}
 	return {
 		options, sessionToken,
+		trustedPolicyMetadata: undefined as (<T>(run: () => T) => T) | undefined,
+		trustedContent: undefined as (<T>(run: () => T) => T) | undefined,
+		readerProvider() {
+			return { id: "paid-access", decide: async (resource: AccessInput & { locale: string; revision: string }) => resolveReaderAccess(await readerAccess(resource)) };
+		},
 		/** Tell the core whether the legacy plugin is active. Throws when that can't be established. */
 		detectLegacy: probe,
 		access: memoizedAccess,
@@ -164,3 +189,15 @@ export function createPaidAccess(locals: PluginLocals, request: Request, session
 }
 export type PaidAccessLocals = ReturnType<typeof createPaidAccess>;
 declare global { namespace App { interface Locals { paidAccess: PaidAccessLocals } } }
+
+async function bounded<T>(pending: Promise<T>, fallback: T): Promise<T> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		return await Promise.race([pending, new Promise<T>(resolve => { timer = setTimeout(() => resolve(fallback), 1500); })]);
+	} catch { return fallback; }
+	finally { clearTimeout(timer); }
+}
+
+function validGroupEntry(value: unknown): value is { id: string; slug: string | null; locale: string } {
+	return isRecord(value) && typeof value.id === "string" && value.id.length > 0 && (typeof value.slug === "string" || value.slug === null) && typeof value.locale === "string" && value.locale.length > 0;
+}

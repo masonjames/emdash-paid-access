@@ -3,56 +3,25 @@
 
 import type { Block, BlockResponse, FormField } from "@emdash-cms/blocks";
 import type { PluginContext } from "emdash/plugin";
-import { restrictionsHandler } from "../handlers/restrictions.js";
 import { agentsNeverFree, loadSettings } from "../handlers/settings.js";
-import { getEntryRestrictions, normalizeAgentPrice, normalizeContentRestriction, priceFromInput } from "../restrictions.js";
-import type { AccessPolicy, ContentRestrictionRecord, PaidAccessSettings, RouteContext } from "../types.js";
-import { AGENTS_PAY_WARNING, banner, confirmButton, context, failure, interaction, request, str, summary } from "./shared.js";
+import { getEntryRestrictions, highestAgentPrice, normalizeAgentPrice, normalizeContentRestriction, priceFromInput } from "../restrictions.js";
+import { resolveAccess } from "../resolver.js";
+import type { AccessPolicy, ContentRestrictionRecord, RouteContext } from "../types.js";
+import { nowIso } from "../utils.js";
+import { AGENTS_PAY_WARNING, banner, context, failure, interaction, link, str } from "./shared.js";
 
-// The panel auto-saves each answer instead of using a Block Kit form: EmDash
-// 1.0.1 renders editor panels inside the entry editor's own <form>, so a nested
-// panel form submits the editor instead of the plugin. Radios dispatch on
-// change and the price field on blur, outside any form.
-//
-// Block Kit sends only an action's id and value, so each id carries revisions:
-// the stored rules', and a per-post panel generation every action claims. A
-// stale action is refused instead of overwriting a newer one, even when the
-// newer one saved nothing. Every choice is read from storage and saved at once,
-// except "Pay per read" without a price, which the id carries until the price
-// arrives.
-// ponytail: the changing ids remount the controls after each save, so keyboard
-// focus leaves them; fixing that needs Block Kit to echo panel state apart
-// from React keys. Plugin storage has no multi-key transactions, so the claim,
-// the rule write and a legacy-plus-ID removal are separate compare-and-sets: an
-// action stalled for seconds between them can still land after a newer one.
-
-type People = "anyone" | "members";
-type Agents = "none" | "free" | "pay";
-type State = { people: People; agents: Agents };
-
-const AGENT_OPTIONS: Record<People, Agents[]> = { anyone: ["none", "free", "pay"], members: ["pay", "none"] };
-const agentOptions = (people: People, neverFree: boolean) => AGENT_OPTIONS[people].filter(value => !(neverFree && value === "free"));
-const SALE: AccessPolicy[] = ["agents-pay", "members"];
-const STATES: Record<AccessPolicy, State> = {
-	public: { people: "anyone", agents: "free" },
-	"agents-pay": { people: "anyone", agents: "pay" },
-	members: { people: "members", agents: "pay" },
-	"members-only": { people: "members", agents: "none" },
+const labels: Record<AccessPolicy, string> = {
+	public: "Public — free machine-readable copy",
+	"agents-pay": "Public page + paid machine-readable copy",
+	"members-only": "Members only — machine-readable read not offered",
+	members: "Members or paid read",
 };
+class ValidationError extends Error {}
 
-// "Anyone" with agents not offered is no rule at all.
-function policyOf({ people, agents }: State): AccessPolicy | null {
-	if (people === "anyone") return agents === "free" ? "public" : agents === "pay" ? "agents-pay" : null;
-	return agents === "pay" ? "members" : "members-only";
-}
-
-type Stored = {
-	rules: Awaited<ReturnType<typeof getEntryRestrictions>>;
-	own: ContentRestrictionRecord | null;
-	legacy: ContentRestrictionRecord | null;
-	rev: string;
-};
-type Saved = "ok" | "stale" | "error";
+const paidPolicies = ["agents-pay", "members"];
+const memberPolicies = ["members-only", "members"];
+const legacyMessage = "An older rule needs migration before editing. Ask the site maintainer to consolidate this entry’s slug and ID rules in one database transaction, preserving the strongest policy.";
+const delegatedMessage = "This entry also has a Paid Access membership rule. Editing here could change website access. Ask the site maintainer to review it under Advanced rules before changing the machine-readable copy.";
 
 export async function editorPanel(route: RouteContext, ctx: PluginContext): Promise<BlockResponse> {
 	const identity = route.ui?.entry;
@@ -60,165 +29,127 @@ export async function editorPanel(route: RouteContext, ctx: PluginContext): Prom
 	const entry = await ctx.content.get(identity.collection, identity.id);
 	if (!entry) return failure("This post couldn't be found. Reload the editor and try again.");
 	const settings = await loadSettings(ctx);
-	const target = { collectionSlug: identity.collection, contentId: identity.id, slug: entry.slug, title: typeof entry.data.title === "string" ? entry.data.title : null };
+	const delegated = settings.humans.mode === "delegate";
+	const neverFree = await agentsNeverFree(ctx, settings);
+	const key = `${identity.collection}:${identity.id}`;
 	const legacyKey = entry.slug && entry.slug !== identity.id ? `${identity.collection}:${entry.slug}` : null;
-	const generationKey = `editor-generation:${identity.collection}:${identity.id}`;
-	// Rules and revisions come from the same reads, so a panel never pairs one rule with another's revision.
-	const load = async (): Promise<Stored> => {
-		const [rules, generation, own, legacy] = await Promise.all([
-			getEntryRestrictions(ctx, identity.collection, identity.id, entry.slug),
-			ctx.kv.getVersioned(generationKey),
-			ctx.storage.restrictions.getVersioned(`${identity.collection}:${identity.id}`),
+	const load = async () => {
+		const [version, legacy, rules] = await Promise.all([
+			ctx.storage.restrictions.getVersioned(key),
 			legacyKey ? ctx.storage.restrictions.getVersioned(legacyKey) : null,
+			getEntryRestrictions(ctx, identity.collection, identity.id, entry.slug),
 		]);
-		const direct = { own: own ? normalizeContentRestriction(own.value) : null, legacy: legacy ? normalizeContentRestriction(legacy.value) : null };
-		return { rules: [...[direct.own, direct.legacy].filter(r => r !== null), ...rules.filter(r => "taxonomyName" in r)], ...direct,
-			rev: `${generation?.revision ?? ""}~${own?.revision ?? ""}~${legacy?.revision ?? ""}` };
+		const own = version ? normalizeContentRestriction(version.value) : null;
+		if (version && (!own || own.collectionSlug !== identity.collection || own.contentId !== identity.id)) throw new Error("Invalid entry rule");
+		const oldRule = legacy ? normalizeContentRestriction(legacy.value) : null;
+		if (legacy && !oldRule) throw new Error("Invalid legacy rule");
+		return { version, own, legacy, rules: [...(own ? [own] : []), ...(oldRule ? [oldRule] : []), ...rules.filter(r => "taxonomyName" in r)] };
 	};
-
+	let stored = await load();
+	const editingBlocked = () => stored.legacy ? legacyMessage : delegated && stored.own &&
+		(memberPolicies.includes(stored.own.policy) || (stored.own.requiredPlanSlugs?.length ?? 0) > 0 || (stored.own.productIds?.length ?? 0) > 0) ? delegatedMessage : null;
+	const options = [
+		{ value: "defaults", label: "Use defaults" },
+		...(!delegated && !neverFree ? [{ value: "public", label: labels.public }] : []),
+		...(settings.agents.mode === "paid" ? [{ value: "agents-pay", label: delegated ? "Paid machine-readable copy" : labels["agents-pay"] }] : []),
+		...(!delegated && settings.humans.mode === "stripe" && settings.humans.plans.some(p => p.stripeProductId) && !neverFree ? [
+			{ value: "members-only", label: labels["members-only"] },
+			...(settings.agents.mode === "paid" ? [{ value: "members", label: labels.members }] : []),
+		] : []),
+	];
 	const i = interaction(route);
+	const submittedBlock = typeof route.input === "object" && route.input !== null && "block_id" in route.input ? str(route.input.block_id) : "";
+	const freshId = () => `editor:policy/${encodeURIComponent(stored.version?.revision ?? "")}/${crypto.randomUUID()}`;
+	let blockId = freshId();
 	let toast: BlockResponse["toast"];
-	let pendingPay = false;
-	if (i.type === "block_action") try {
-		const [head = "", rev, pending] = i.action.split("|");
-		const kind = head.startsWith("editor:") ? head.slice("editor:".length) : "";
-		const stored = await load();
-		const current: State = stored.own ? STATES[stored.own.policy] : { people: "anyone", agents: "none" };
-		const shown: State = pending === "pay" ? { ...current, agents: "pay" } : current;
-		const price = stored.own && SALE.includes(stored.own.policy) ? stored.own.agentPrice : null;
-		const value = str(i.value);
-		const typed = (kind === "price" ? str(priceFromInput(value)) : value).trim();
-		// Everything that needs no write is settled before the action claims the panel,
-		// so an unchanged blur or a refused value can't refuse the next click.
-		const valid = kind === "people" ? settings.humans.mode !== "delegate" && (value === "anyone" || value === "members")
-			: kind === "agents" ? agentOptions(current.people, await agentsNeverFree(ctx, settings)).includes(value as Agents)
-			: kind === "price" ? shown.agents === "pay"
-			: kind === "plans" ? current.people === "members"
-			: kind === "remove";
-		if (!valid || rev === undefined) return failure("This action is unavailable. Reload the editor and try again.");
-		const [generationRev = "", ownRev = "", legacyRev = ""] = rev.split("~");
-		const stale = () => { toast = { type: "error", message: "This post's access changed since the panel loaded. Check the choices and try again." }; };
-		const unchanged = kind === "price" ? typed === (price ?? "") : kind === "people" ? value === shown.people : kind === "agents" && value === shown.agents;
-		if (rev !== stored.rev) stale();
-		else if (unchanged) pendingPay = shown.agents === "pay" && current.agents !== "pay";
-		else if (stored.legacy && kind !== "remove") toast = { type: "error", message: "Remove the older rule first, then choose new access." };
-		else if (kind === "price" && !normalizeAgentPrice(typed)) {
-			toast = { type: "error", message: typed ? "Enter a price like $0.05, with at most six decimals." : "Enter a price per read, or choose another option for AI agents." };
-			pendingPay = current.agents !== "pay";
-		}
-		// Claiming the generation orders this panel's actions: an older one loses.
-		else if (!(await ctx.kv.compareAndSet(generationKey, generationRev || null, Date.now())).applied) stale();
+	let typed: Record<string, unknown> | undefined;
+	if (i.type === "form_submit" && i.action === "editor:save") {
+		const match = /^editor:policy\/([^/]*)\/[^/]+$/.exec(submittedBlock);
+		const revision = match ? decodeURIComponent(match[1]) : undefined;
+		const stale = () => {
+			toast = { type: "error", message: "Access changed since this form loaded. Current stored values have been reloaded; review them and save again." };
+		};
+		const blocked = editingBlocked();
+		if (blocked) toast = { type: "error", message: blocked };
+		else if (revision === undefined) toast = { type: "error", message: "Reload this panel before saving." };
+		else if (revision !== (stored.version?.revision ?? "")) stale();
 		else {
-			const done = (result: unknown, message: string): Saved => {
-				const r = result as { ok?: boolean; error?: string; stale?: boolean };
-				if (r.stale) {
-					stale();
-					return "stale";
+			// Keep the mounted native form (and typed values) on validation/write failure.
+			blockId = submittedBlock;
+			typed = i.values;
+			try {
+				const preset = str(i.values.preset);
+				if (!options.some(option => option.value === preset)) throw new ValidationError("Choose an available access preset. Provider settings may have changed.");
+				for (const name of ["plans_members", "plans_members-only"]) {
+					const value = i.values[name];
+					if (value !== undefined && (!Array.isArray(value) || !value.every(v => typeof v === "string" && settings.humans.mode === "stripe" && !neverFree && settings.humans.plans.some(p => p.slug === v && p.stripeProductId)))) throw new ValidationError("Choose only currently supported membership plans.");
 				}
-				toast = r.ok === false ? { type: "error", message: r.error || "Couldn't save. Try again." } : { type: "success", message };
-				return r.ok === false ? "error" : "ok";
-			};
-			const remove = async () => done(await restrictionsHandler(request(route, { ...target, expectedRevision: ownRev, expectedLegacyRevision: legacyRev }, "DELETE"), ctx), "Rule removed. Site defaults and category or tag rules still apply.");
-			const save = async (next: State, extra: Record<string, unknown> = {}) => {
-				const policy = policyOf(next);
-				if (!policy) return remove();
-				return done(await restrictionsHandler(request(route, { ...target, ...extra, policy, agentPrice: next.agents === "pay" ? extra.agentPrice ?? price : null, expectedRevision: ownRev }), ctx), "Saved. Readers see the change on their next visit.");
-			};
-			// Pay without a price waits for one; everything else saves at once.
-			const needsPrice = (next: State) => next.agents === "pay" && !price && settings.agents.mode !== "off";
-			const askForPrice = () => {
-				pendingPay = true;
-				toast ??= { type: "info", message: "Enter a price per read. It saves when you leave the field." };
-			};
-			if (kind === "people" && (value === "anyone" || value === "members")) {
-				const next: State = { people: value, agents: shown.agents === "pay" ? "pay" : AGENT_OPTIONS[value].includes(current.agents) ? current.agents : "none" };
-				const plans = value === "anyone" ? { requiredPlanSlugs: [] } : {};
-				if (needsPrice(next)) {
-					// Save the audience now, so no later action can undo it; the price saves Pay.
-					if (await save({ people: value, agents: "none" }, plans) === "ok") askForPrice();
-				} else await save(next, plans);
-			} else if (kind === "agents") {
-				const next: State = { people: current.people, agents: value as Agents };
-				if (needsPrice(next)) askForPrice();
-				else await save(next);
-			} else if (kind === "price") {
-				await save({ people: current.people, agents: "pay" }, { agentPrice: typed });
-			} else if (kind === "plans") {
-				const plans = Array.isArray(i.value) ? i.value.filter((v): v is string => typeof v === "string") : [];
-				if (await save(current, { requiredPlanSlugs: plans }) === "ok") pendingPay = shown.agents === "pay" && current.agents !== "pay";
-			} else await remove();
+				if (memberPolicies.includes(preset) && (!Array.isArray(i.values[`plans_${preset}`]) || !(i.values[`plans_${preset}`] as unknown[]).length)) throw new ValidationError("Choose at least one membership plan.");
+				const agentPrice = paidPolicies.includes(preset) ? normalizeAgentPrice(priceFromInput(i.values[`price_${preset}`])) : null;
+				if (paidPolicies.includes(preset) && !agentPrice) throw new ValidationError("Enter a positive price such as $0.05, with at most six decimals.");
+				let applied: boolean;
+				if (preset === "defaults") {
+					// One authoritative key only. Never use the legacy multi-key DELETE handler.
+					applied = revision ? (await ctx.storage.restrictions.compareAndDelete(key, revision)).applied : !(await ctx.storage.restrictions.getVersioned(key));
+				} else {
+					const record: ContentRestrictionRecord = {
+						collectionSlug: identity.collection, contentId: identity.id, slug: entry.slug,
+						title: typeof entry.data.title === "string" ? entry.data.title : null,
+						policy: preset as AccessPolicy, agentPrice,
+						requiredPlanSlugs: memberPolicies.includes(preset) ? [...new Set((i.values[`plans_${preset}`] ?? []) as string[])] : [],
+						productIds: [], passEligible: false, source: "manual",
+						createdAt: stored.own?.createdAt ?? nowIso(), updatedAt: nowIso(),
+					};
+					applied = (await ctx.storage.restrictions.compareAndSet(key, revision || null, record)).applied;
+				}
+				stored = await load();
+				typed = undefined;
+				blockId = freshId();
+				if (!applied) stale();
+				else toast = { type: "success", message: "Policy saved. Cache activation is pending verification." };
+			} catch (error) {
+				// Only our validation messages are safe to display; storage errors may contain secrets.
+				const message = error instanceof ValidationError ? error.message : "Save could not be confirmed. Your values are retained; reload before retrying if the write may have completed.";
+				toast = { type: "error", message };
+			}
 		}
-	} catch {
-		toast = { type: "error", message: "Couldn't save. Try again." };
 	} else if (i.type !== "panel_load") return failure("This action is unavailable. Reload the editor and try again.");
 
-	const stored = await load();
-	// After a refused save, remount the controls so they show what's saved.
-	const epoch = toast?.type === "error" ? crypto.randomUUID() : "0";
-	return { blocks: await render(ctx, settings, identity, entry, stored, pendingPay, epoch), ...(toast ? { toast } : {}) };
-}
-
-async function render(
-	ctx: PluginContext,
-	s: PaidAccessSettings,
-	identity: { collection: string; id: string },
-	entry: { slug: string | null; status: string },
-	{ rules, own, legacy, rev }: Stored,
-	pendingPay: boolean,
-	epoch: string,
-): Promise<Block[]> {
-	const delegated = s.humans.mode === "delegate";
-	const neverFree = await agentsNeverFree(ctx, s);
-	const direct = own ?? legacy;
-	const current: State = own ? STATES[own.policy] : { people: "anyone", agents: "none" };
-	const state: State = pendingPay ? { ...current, agents: "pay" } : current;
-	const id = (kind: string) => `editor:${kind}|${rev}|${pendingPay ? "pay" : ""}`;
-	// A saved choice that's no longer offered (free, once delegated) leaves the radio unselected.
-	const radio = (kind: string, label: string, options: Array<{ value: string; label: string }>, initial: string): Block =>
-		({ type: "actions", block_id: `editor:${kind}/${epoch}`, elements: [{ type: "radio", action_id: id(kind), label, options, ...(options.some(o => o.value === initial) ? { initial_value: initial } : {}) }] });
-
-	const noneLabel = state.people === "members" ? "Not sold to agents" : s.agents.freeByDefault && !neverFree ? "Site default: free Markdown" : "Not offered";
-	const agentsLabels: Record<Agents, string> = { none: noneLabel, free: "Free — they read it as Markdown", pay: "Pay per read (x402, USDC)" };
-	const savedAgents = s.agents.mode === "off" ? "Off" : direct?.policy === "public" && neverFree ? "Not offered" : direct ? summary(direct).agents : s.agents.freeByDefault && !neverFree ? "Free (site default)" : "Not offered";
-	const blocks: Block[] = [{ type: "fields", fields: [{ label: "People", value: direct ? summary(direct).people : "Anyone" }, { label: "AI agents", value: savedAgents }] }];
-
-	const inherited = rules.filter(r => "taxonomyName" in r);
-	if (inherited.length && ctx.taxonomies) {
-		const [terms, taxonomies] = await Promise.all([ctx.taxonomies.getEntryTerms(identity.collection, identity.id), ctx.taxonomies.getAll()]);
-		for (const r of inherited) {
-			const term = terms.find(t => t.taxonomy === r.taxonomyName && t.id === r.termId);
-			const taxonomy = taxonomies.find(t => t.name === r.taxonomyName);
-			const label = summary(r);
-			blocks.push(context(`Also covered by ${taxonomy?.labelSingular || r.taxonomyName}: ${term?.label || r.termId} → People: ${label.people} · AI agents: ${label.agents}`));
-		}
+	const { own, rules } = stored;
+	const effective = resolveAccess({ policies: rules.map(r => r.policy), audience: "agent", agentsMode: settings.agents.mode, freeByDefault: settings.agents.freeByDefault && !neverFree });
+	const machine = neverFree && effective.policy === "public" ? "Not offered (free reads disabled)"
+		: effective.agent === "granted" ? "Free copy" : effective.agent === "payment-required" ? `Paid copy · ${highestAgentPrice(rules) ?? "price missing"} per read` : "Not offered";
+	const blocks: Block[] = [
+		{ type: "fields", fields: [
+			{ label: "Website access", value: delegated ? "Controlled by Restrict With Stripe" : memberPolicies.includes(effective.policy) ? "Members only" : "Public" },
+			{ label: "Configured machine-readable read", value: machine },
+		] },
+		context("Stored policy · cache activation unverified."),
+	];
+	const details: Block[] = [
+		{ type: "fields", fields: [{ label: "Strongest entry/category policy", value: rules.length ? labels[effective.policy] : "Site defaults (no entry or taxonomy rule)" }] },
+		context(`Public preview: excerpts ${settings.showExcerpts ? "enabled" : "disabled"}. The site controls which fields stay public; that field list is unverified here.`),
+		context("Other restrictions, including translated entries, may block the configured read."),
+	];
+	for (const rule of rules.filter(r => "taxonomyName" in r)) {
+		details.push(context(`Inherited from ${rule.taxonomyName}:${rule.termId}: ${labels[rule.policy]}. The strongest rule wins; an entry preset cannot weaken it.`));
 	}
-	const remove: Block = { type: "actions", block_id: `editor:remove/${epoch}`, elements: [confirmButton(id("remove"), "Remove rule", "Remove this rule?", "Category and tag rules, and other plugins, still apply.")] };
-	// An older slug-keyed rule must go before new choices, so nothing edits around it.
-	if (legacy) return [...blocks, banner("An older Paid Access rule also covers this post. Remove the rule here to clear both saved versions, then choose new access.", "alert"), remove];
-	if (!delegated && await ctx.kv.get("state:legacyPluginPresent") === true) blocks.push(context("Restrict With Stripe may also restrict this post. Review its rule in the Restrict panel; this panel can't read that plugin's rules."));
-
-	if (delegated) blocks.push(context("Restrict With Stripe decides who can read this post on your site. Here you choose what AI agents get."));
-	else blocks.push(radio("people", "Who can read it for free?", [{ value: "anyone", label: "Anyone" }, { value: "members", label: "Members only" }], state.people));
-	blocks.push(radio("agents", "What about AI agents?", agentOptions(state.people, neverFree).map(value => ({ value, label: agentsLabels[value] })), state.agents));
-	if (state.agents === "pay") {
-		const price: FormField = { type: "text_input", action_id: id("price"), label: "Price per read (USD)", initial_value: own && SALE.includes(own.policy) ? own.agentPrice ?? "" : "", placeholder: "$0.05" };
-		blocks.push({ type: "actions", block_id: `editor:price/${epoch}`, elements: [price] }, context("Agents pay this in USDC before they get the full post, up to six decimals. It saves when you leave the field."));
+	if (delegated) blocks.push(context("Restrict With Stripe controls website access. Choose a paid copy or use inherited defaults here. A separate Not offered override is unavailable."));
+	else if (neverFree) blocks.push(context("Restrict With Stripe is active. Review its rule in the Restrict panel; free machine-readable reads are disabled."));
+	const blocked = editingBlocked();
+	if (blocked) return { blocks: [...blocks, banner(blocked, "alert"), { type: "accordion", label: "Policy details", blocks: details }, { type: "actions", elements: [link("Advanced rules", "/rules")] }], ...(toast ? { toast } : {}) };
+	const preset = typed ? str(typed.preset) : own?.policy ?? "defaults";
+	const fields: FormField[] = [{ type: "radio", action_id: "preset", label: delegated ? "Machine-readable copy" : "Access", options, ...(options.some(o => o.value === preset) ? { initial_value: preset } : {}) }];
+	for (const option of options) {
+		if (paidPolicies.includes(option.value)) fields.push({ type: "text_input", action_id: `price_${option.value}`, label: "Price per read (USD)", placeholder: "$0.05", initial_value: typed ? str(typed[`price_${option.value}`]) : own?.agentPrice ?? "", condition: { field: "preset", eq: option.value } });
+		if (memberPolicies.includes(option.value) && settings.humans.plans.length) fields.push({ type: "checkbox", action_id: `plans_${option.value}`, label: "Membership plans (choose at least one)", options: settings.humans.plans.filter(p => p.stripeProductId).map(p => ({ value: p.slug, label: p.name })), initial_value: (typed && Array.isArray(typed[`plans_${option.value}`]) ? (typed[`plans_${option.value}`] as unknown[]).filter((v): v is string => typeof v === "string") : own?.requiredPlanSlugs ?? []).filter(v => settings.humans.plans.some(p => p.slug === v && p.stripeProductId)), condition: { field: "preset", eq: option.value } });
 	}
-	if (state.people === "members" && s.humans.mode === "stripe") {
-		blocks.push(s.humans.plans.length
-			? { type: "actions", block_id: `editor:plans/${epoch}`, elements: [{ type: "checkbox", action_id: id("plans"), label: "Plans that include it", options: s.humans.plans.map(p => ({ value: p.slug, label: p.name })), initial_value: own?.requiredPlanSlugs ?? [] }] }
-			: context("Add a plan under Paid Access → Settings → Members first."));
-	}
-	blocks.push(context("Changes save as you make them."));
-
-	const policy = own?.policy;
-	if (policy === "agents-pay" && !delegated) blocks.push(banner(AGENTS_PAY_WARNING, "alert"));
-	if (policy === "public" && neverFree) blocks.push(banner("This post was set to free for AI agents. That's ignored while Restrict With Stripe is active: agents can't read it. Choose Pay per read to sell it.", "alert"));
-	if (s.agents.mode === "off") blocks.push(banner("AI agent sales are off for this site. Turn them on in Paid Access → Settings."));
-	if (s.humans.mode === "off" && rules.some(r => r.policy === "members" || r.policy === "members-only")) blocks.push(banner("Member access is off, so people can't unlock this post. Turn on Members in Paid Access → Settings.", "alert"));
-	if (entry.status === "published" && entry.slug && s.agents.mode === "paid" && rules.some(r => SALE.includes(r.policy)) && !rules.some(r => r.policy === "members-only")) {
-		blocks.push(context(`Agents can buy it at ${s.agentRoutePrefix}/${encodeURIComponent(identity.collection)}/${encodeURIComponent(entry.slug)}.md`));
-	}
-	if (own) blocks.push(remove);
-	return blocks;
+	blocks.push({ type: "form", block_id: blockId, fields, submit: { action_id: "editor:save", label: "Save access" } });
+	if (own && !options.some(o => o.value === own.policy)) blocks.push(banner("The stored preset is unavailable with the current provider settings. It remains in force until you explicitly choose and save an available option.", "alert"));
+	details.push(context(delegated ? "Use defaults removes only this entry’s paid-copy rule; inherited rules still apply." : "Use defaults inherits site/category rules. Public explicitly offers a free copy."));
+	if (effective.policy === "agents-pay") blocks.push(banner(delegated ? "If the website page is public, its HTML can be read without buying this copy." : AGENTS_PAY_WARNING, "alert"));
+	if (settings.humans.mode === "off" && memberPolicies.includes(effective.policy)) blocks.push(banner("Member access is off; the stored member restriction cannot be unlocked.", "alert"));
+	details.push(context("Host payment setup is unverified here. Missing configuration keeps paid reads unavailable. See Settings."));
+	blocks.push({ type: "accordion", label: "Policy details", blocks: details }, { type: "actions", elements: [link("Settings", "/settings"), link("Advanced rules", "/rules")] });
+	return { blocks, ...(toast ? { toast } : {}) };
 }

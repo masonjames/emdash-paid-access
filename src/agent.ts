@@ -33,7 +33,7 @@ function empty(status: number): Response {
 	return new Response(null, { status, headers: { "Cache-Control": "private, no-store" } });
 }
 
-function markdown(entry: AgentEntry, pricePaid: string): string {
+export function renderAgentMarkdown(entry: AgentEntry, pricePaid: string): string {
 	return [
 		"---",
 		`title: ${JSON.stringify(entry.title)}`,
@@ -92,7 +92,7 @@ export async function serveAgentEntry(input: {
 	if (new URL(input.request.url).pathname.endsWith(".json")) return empty(404);
 	const policies = input.rules.map((rule) => rule.policy);
 	const initial = resolveAccess({ policies, audience: "agent", agentsMode: input.settings.mode, freeByDefault: input.settings.freeByDefault });
-	if (initial.status === 200) return markdownResponse(markdown(input.entry, "$0"));
+	if (initial.status === 200) return markdownResponse(renderAgentMarkdown(input.entry, "$0"));
 	if ((initial.status === 403 || initial.status === 404) && input.settings.mode !== "off") return notForSale(input.entry, initial.status, input.offersUrl);
 	if (initial.status !== 402) return empty(initial.status);
 
@@ -106,7 +106,7 @@ export async function serveAgentEntry(input: {
 	}
 	let body: string;
 	try {
-		body = markdown(input.entry, price);
+		body = renderAgentMarkdown(input.entry, price);
 	} catch (error) {
 		input.log?.error("Failed to build agent Markdown", error);
 		return empty(503);

@@ -12,7 +12,7 @@ const request = new Request("https://site.test/post", { headers: { cookie: "lega
 beforeEach(() => { resetRuntimeForTests(); resetCoexistenceCacheForTests(); });
 const anonymous = { ok: true, humanMode: "stripe", authenticated: false, planSlugs: [] };
 function setup(ours: unknown = open, legacy?: unknown, entitlements: unknown = anonymous, legacySession: unknown = { authenticated: false }) {
-	const privateCall = vi.fn(async (_id: string, _method: string, path: string, _req: Request) => ({ success: true, data: path === "access" ? ours : path === "entitlements" ? entitlements : { ok: true } }));
+	const privateCall = vi.fn(async (_id: string, _method: string, path: string, _req: Request) => ({ success: true, data: path === "reader/group" ? { ok: true, group: "group", entries: [{ id: "db-1", slug: "slug", locale: "en" }, { id: "db-fr", slug: "slug-fr", locale: "fr" }] } : path === "access" ? ours : path === "entitlements" ? entitlements : { ok: true } }));
 	const publicCall = vi.fn(async (_id: string, _method: string, path: string, _req: Request) => legacy === undefined
 		? { success: false, error: { code: "NOT_FOUND" } } : { success: true, data: path === "access" ? legacy : legacySession });
 	const locals = { emdash: { handlePluginApiRoute: privateCall, handlePublicPluginApiRoute: publicCall } };
@@ -379,4 +379,29 @@ it("segments ignores an EmDash staff user on locals", async () => {
 	expect(JSON.stringify(segments)).not.toMatch(/admin|staff|@|50/);
 	const [, , , init] = calls(privateCall, "entitlements")[0] as [string, string, string, Request];
 	expect(await init.json()).toEqual({ sessionToken: null });
+});
+
+it("adapts the existing delegated decision and deduplicates host reads by locale/revision", async () => {
+	const { api, privateCall } = setup({ ...open, restricted: true, hasAccess: false, showExcerpts: true });
+	const resource = { ...entry, locale: "en", revision: "v1" };
+	expect(await api.readerProvider().decide(resource)).toBe("preview");
+	expect(await api.readerProvider().decide(resource)).toBe("preview");
+	expect(calls(privateCall, "access")).toHaveLength(2);
+	await api.readerProvider().decide({ ...resource, id: "db-fr", slug: "slug-fr", locale: "fr" });
+	await api.readerProvider().decide({ ...resource, revision: "v2" });
+	expect(calls(privateCall, "access")).toHaveLength(4);
+});
+it("host reader decisions fail closed for revoked access and provider errors", async () => {
+	expect(await setup({ ...open, restricted: true, hasAccess: false }).api.readerProvider().decide({ ...entry, locale: "en", revision: "v1" })).toBe("deny");
+	expect(await setup({ ...open, error: "offline" }).api.readerProvider().decide({ ...entry, locale: "en", revision: "v1" })).toBe("deny");
+});
+it("bounds a hung identity/entitlement resolution", async () => {
+	vi.useFakeTimers();
+	try {
+		const { api, privateCall } = setup();
+		privateCall.mockImplementation(() => new Promise(() => {}));
+		const result = api.readerProvider().decide({ ...entry, locale: "en", revision: "v1" });
+		await vi.advanceTimersByTimeAsync(1501);
+		expect(await result).toBe("deny");
+	} finally { vi.useRealTimers(); }
 });

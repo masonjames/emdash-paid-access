@@ -1,3 +1,5 @@
+import { paidReadQuote, paidReadHandler, paidReadReceipt } from "./handlers/paid-read.js";
+import { readerGroupHandler } from "./handlers/reader-group.js";
 // Copyright 2026 Stranger Studios.
 // Modified by Mason James, 2026-09-23.
 // SPDX-License-Identifier: GPL-2.0-or-later
@@ -70,6 +72,8 @@ const plugin: SandboxedPlugin = {
 		},
 	},
 	routes: {
+		"agent/read": { public: true, methods: ["GET"], response: "raw", payment: true, quote: paidReadQuote, handler: agentsOnly(paidReadHandler), receipt: paidReadReceipt },
+		"reader/group": { methods: ["POST"], permission: "plugins:manage", handler: readerGroupHandler },
 		admin: { methods: ["POST"], permission: "plugins:manage", handler: adminHandler },
 		// Whoever may publish any post may set its rule; every other private route explicitly requires plugins:manage.
 		"editor/paid-access": { methods: ["POST"], permission: "content:publish_any", handler: editorHandler },

@@ -98,3 +98,15 @@ it("fails closed before charging when Base uses the default test facilitator", a
  expect(await result.text()).toBe("");
  expect(enforce).not.toHaveBeenCalled();
 });
+
+it("uses the trusted server read for quoting while retaining the native payment gate", async () => {
+	const { context, enforce } = setup([{ policy: "members", agentPrice: "$0.01" }]);
+	let trusted = false;
+	context.locals.paidAccess.trustedContent = asyncRun;
+	function asyncRun<T>(run: () => T): T { trusted = true; try { return run(); } finally { trusted = false; } }
+	vi.mocked(getEmDashEntry).mockImplementation(async () => ({ entry: { id: "slug", data: { id: "db-1", status: "published", title: "Title", content: trusted ? content : [] } } }));
+	const response = await GET(context);
+	expect(response.status).toBe(402);
+	expect(enforce).toHaveBeenCalledOnce();
+	expect(await response.text()).not.toContain("SENTINEL_BODY");
+});

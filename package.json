@@ -53,7 +53,12 @@
       "import": "./dist/astro/routes/account.mjs",
       "default": "./dist/astro/routes/account.mjs"
     },
-    "./components/*": "./src/components/*"
+    "./components/*": "./src/components/*",
+    "./astro/reader-middleware": {
+      "types": "./dist/astro/reader-middleware.d.mts",
+      "import": "./dist/astro/reader-middleware.mjs",
+      "default": "./dist/astro/reader-middleware.mjs"
+    }
   },
   "peerDependencies": {
     "emdash": "^1.2.0",

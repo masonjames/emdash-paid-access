@@ -98,3 +98,12 @@ it("rejects Gateway even with a trust value, while letting saved configurations 
  expect(recovered.toast?.type).toBe("success");
  expect(ctx.settings.data.get("agentsRail")).toBe("origin-x402");
 });
+
+it("identifies legacy wallet settings without claiming host payment configuration", async () => {
+ const ctx = fixture(paid);
+ const result = JSON.stringify(await admin(ctx, page("/settings")));
+ expect(result).toContain("Legacy companion network (ignored by host-managed payments)");
+ expect(result).toContain("host challenge is authoritative");
+ expect(result).toContain("unavailable, never free");
+ expect(result).toContain("Production activation remains pending cache proof");
+});

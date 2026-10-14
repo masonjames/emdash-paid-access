@@ -47,18 +47,18 @@ export async function settingsPage(route: RouteContext, ctx: PluginContext, edit
 		{ type: "header", text: "Paid Access" }, context("Charge people with Stripe memberships and AI agents with x402 payments — separately or together."),
 		...(s.humans.mode === "stripe" && !s.emailConfigured ? [banner("Sign-in links can't be sent. Install and configure an email provider plugin, then come back.", "error")] : []),
 		...(legacy ? [banner("Restrict With Stripe is active on this site. Member access is delegated to it until you migrate.", "alert")] : []),
-		...(s.agents.mode !== "off" && (!s.agents.payTo || !s.agents.network) ? [banner("Agent sales are on but there's no payout wallet. Add one below.", "error")] : []),
+		...(s.agents.mode !== "off" && (!s.agents.payTo || !s.agents.network) ? [banner("Legacy companion payments have no payout wallet. Host-managed payments instead require host x402 configuration; its status is unverified here.", "error")] : []),
 		{ type: "tab", block_id: `settings:tabs:${defaultTab}`, default_tab: defaultTab, panels: [
 			{ label: "AI agents", blocks: [
 				...(s.agents.mode === "tokens-only" ? [{ type: "fields" as const, fields: [{ label: "Sell to AI agents", value: "Subscriber tokens only" }] }, context("Subscriber tokens only is the saved mode. Leave the choice below unchanged to keep it.")] : []),
 				form("settings:agents:save", "Save agent settings", [
 					{ type: "radio", action_id: "agents_mode", label: "Sell to AI agents", ...(s.agents.mode !== "tokens-only" ? { initial_value: s.agents.mode } : {}), options: [{ value: "off", label: "Off" }, { value: "paid", label: "On — agents pay per read" }] },
-					{ type: "radio", action_id: "agents_network", label: "Network", condition: paid, initial_value: s.agents.network || "eip155:84532", options: [{ value: "eip155:84532", label: "Base Sepolia (test USDC)" }, { value: "eip155:8453", label: "Base (real USDC)" }] },
-					{ ...textField("agents_pay_to", "Payout wallet", s.agents.payTo, "0x…"), condition: paid },
+					{ type: "radio", action_id: "agents_network", label: "Legacy companion network (ignored by host-managed payments)", condition: paid, initial_value: s.agents.network || "eip155:84532", options: [{ value: "eip155:84532", label: "Base Sepolia (test USDC)" }, { value: "eip155:8453", label: "Base (real USDC)" }] },
+					{ ...textField("agents_pay_to", "Legacy companion payout wallet (ignored by host-managed payments)", s.agents.payTo, "0x…"), condition: paid },
 					...(s.humans.mode === "delegate" ? [] : [{ type: "toggle" as const, action_id: "agents_free_by_default", label: "Offer free Markdown for posts without a rule", initial_value: s.agents.freeByDefault, condition: paid }]),
 				]), ...(s.agents.mode === "paid" ? [
-					context("USDC goes straight to this address on the selected network. Use a wallet you control."),
-					context("Base requires a production facilitator in the Astro companion configuration and a site rebuild. The default facilitator supports Base Sepolia test payments."),
+					context("These wallet and network settings apply only to legacy companion payments. Host-managed payments use the host x402 registration, wallet, network and facilitator; the host challenge is authoritative. Ask the site maintainer to check host configuration. Missing host configuration keeps those routes unavailable, never free."),
+					context("Host payment configuration and cache activation are unverified in this panel. Production activation remains pending cache proof."),
 					s.humans.mode === "delegate"
 						? context("Agents only get posts that have a Paid Access rule, and never for free while Restrict With Stripe decides who can read.")
 						: context("Agents only get posts that have a Paid Access rule. Offering free Markdown for everything else is good for AI search, but leave it off if another plugin or your theme restricts some posts: agents would read those for free."),

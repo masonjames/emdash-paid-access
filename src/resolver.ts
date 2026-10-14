@@ -1,7 +1,7 @@
 // Copyright 2026 Mason James.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-import type { AccessPolicy, AgentMode } from "./types.js";
+import type { AccessDecision, AccessPolicy, AgentMode } from "./types.js";
 
 export const CONTENT_SIGNAL = "ai-train=no, search=yes, ai-input=yes";
 
@@ -55,4 +55,17 @@ export function resolveAccess(input: ResolverInput): ResolverResult {
 		? { "Cache-Control": "private, no-store", "Content-Signal": CONTENT_SIGNAL }
 		: {};
 	return { policy, human, agent, status, headers };
+}
+
+/** Translate the existing native/delegated human decision for the host reader gate. */
+export function resolveReaderAccess(decision: AccessDecision & { showExcerpts?: boolean }): "allow" | "preview" | "deny" {
+	const resolved = resolveAccess({
+		policies: [decision.restricted ? "members" : "public"],
+		audience: "human", agentsMode: "off",
+		humanAuthorized: decision.hasAccess,
+		error: Boolean(decision.error) || (!decision.restricted && !decision.hasAccess),
+	});
+	if (resolved.human === "error") return "deny";
+	if (resolved.human === "granted") return "allow";
+	return decision.showExcerpts === true ? "preview" : "deny";
 }

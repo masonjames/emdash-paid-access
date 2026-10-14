@@ -10,6 +10,7 @@ export default getViteConfig({
 	server: { host: "127.0.0.1", deps: { inline: ["@emdash-cms/x402"] } },
 	ssr: { noExternal: ["@emdash-cms/x402"] },
 	resolve: {
+		dedupe: ["@x402/core", "@x402/evm"],
 		alias: {
 			"emdash-paid-access/astro/runtime": fileURLToPath(new URL("./src/astro/runtime.ts", import.meta.url)),
 			"virtual:emdash/block-components": fileURLToPath(new URL("./tests/fixtures/emdash-virtual.ts", import.meta.url)),

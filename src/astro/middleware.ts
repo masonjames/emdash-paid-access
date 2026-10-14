@@ -7,6 +7,9 @@ import { createPaidAccess } from "./runtime.js";
 
 export const onRequest = defineMiddleware(async (context, next) => {
 	context.locals.paidAccess = createPaidAccess(context.locals, context.request, context.cookies.get("phb_session")?.value ?? null, options);
+	if (options.hostPayments && context.locals.pluginPaymentAdapter) {
+		context.locals.pluginPayments = { ...context.locals.pluginPayments, "paid-access/agent/read": { adapter: context.locals.pluginPaymentAdapter, provider: "paid-access", collections: options.collections } };
+	}
 	const response = await next();
 	// Child components cannot reliably set the page response headers during
 	// streaming. Protect HTML at the response boundary, before any body is sent.
