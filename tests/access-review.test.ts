@@ -14,6 +14,7 @@ function context(mode: string, policy?: string) {
 	return {
 		input: { collectionSlug: "posts", contentId: "one" },
 		request: new Request("https://site.test/access"),
+		kv: { get: async () => null },
 		settings: { get: async (key: string) => key === "humansMode" ? mode : null },
 		storage: {
 			restrictions: { get: async () => policy ? { contentId: "one", collectionSlug: "posts", policy, createdAt: "2026-09-29" } : null },

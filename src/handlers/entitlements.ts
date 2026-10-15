@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 import type { PluginContext } from "emdash/plugin";
-import type { HumanMode, RouteContext } from "../types.js";
+import type { HumanMode, PaidAccessSettings, RouteContext } from "../types.js";
 
-import { getCustomerRecordByEmail } from "../customers.js";
+import { ForeignMigratedCustomerError, getCustomerRecordByEmail, hasMigrationBinding, verifyCustomerAssociation, verifyMigratedCustomer } from "../customers.js";
 import { StripeClient } from "../stripe.js";
 import { isRecord, routeError, uniqueStrings } from "../utils.js";
 import { getSessionEmail } from "./auth.js";
@@ -14,20 +14,33 @@ import { loadSettings } from "./settings.js";
  * Every product the member's Stripe customers own, with at most one pass per
  * customer and no storage writes. Any Stripe error propagates, so the route fails closed.
  */
-async function ownedProducts(ctx: PluginContext, stripe: StripeClient, email: string, configured: string[]): Promise<Set<string>> {
+async function ownedProducts(ctx: PluginContext, stripe: StripeClient, email: string, configured: string[], settings: PaidAccessSettings): Promise<Set<string>> {
 	const owned = new Set<string>();
 	const passed = new Set<string>();
 	const local = await getCustomerRecordByEmail(ctx, email);
+	if (hasMigrationBinding(local)) {
+		await verifyMigratedCustomer(local, stripe, email, settings);
+		return stripe.customerProducts(local.stripeCustomerId);
+	}
 	if (local?.stripeCustomerId) {
+		const migrated = await verifyCustomerAssociation(ctx, stripe, email, local.stripeCustomerId, settings);
 		passed.add(local.stripeCustomerId);
 		for (const product of await stripe.customerProducts(local.stripeCustomerId)) owned.add(product);
 		// Like access, search by email only when the stored customer doesn't cover what is asked: here, every plan.
-		if (configured.every((product) => owned.has(product))) return owned;
+		if (migrated || configured.every((product) => owned.has(product))) return owned;
 	}
 	for (const customer of (await stripe.getCustomersByEmail(email)).data) {
 		if (passed.has(customer.id)) continue;
+		let migrated: boolean;
+		try { migrated = await verifyCustomerAssociation(ctx, stripe, email, customer.id, settings); }
+		catch (error) {
+			if (error instanceof ForeignMigratedCustomerError) continue;
+			throw error;
+		}
 		passed.add(customer.id);
-		for (const product of await stripe.customerProducts(customer.id)) owned.add(product);
+		const products = await stripe.customerProducts(customer.id);
+		if (migrated) return products;
+		for (const product of products) owned.add(product);
 	}
 	return owned;
 }
@@ -42,7 +55,7 @@ export async function memberEntitlementsHandler(routeCtx: RouteContext, ctx: Plu
 	const configured = uniqueStrings(settings.humans.plans.map((plan) => plan.stripeProductId));
 	if (!email || !settings.stripeSecretKey || configured.length === 0) return { ok: true, humanMode, authenticated: Boolean(email), planSlugs: [] };
 	try {
-		const owned = await ownedProducts(ctx, new StripeClient(settings.stripeSecretKey, ctx.http!.fetch), email, configured);
+		const owned = await ownedProducts(ctx, new StripeClient(settings.stripeSecretKey, ctx.http!.fetch), email, configured, settings);
 		const planSlugs = settings.humans.plans.filter((plan) => plan.stripeProductId && owned.has(plan.stripeProductId)).map((plan) => plan.slug);
 		return { ok: true, humanMode, authenticated: true, planSlugs };
 	} catch (error) {

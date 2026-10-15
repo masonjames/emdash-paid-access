@@ -63,7 +63,8 @@
     },
     "customers": {
       "indexes": [
-        "email"
+        "email",
+        "stripeCustomerId"
       ]
     },
     "auth_tokens": {

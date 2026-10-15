@@ -5,7 +5,7 @@
 import type { PluginContext } from "emdash/plugin";
 import type { RouteContext } from "../types.js";
 
-import { getCustomerRecordByEmail, upsertCustomerRecord } from "../customers.js";
+import { getCustomerRecordByEmail, hasMigrationBinding, upsertCustomerRecord, verifyCustomerAssociation, verifyMigratedCustomer } from "../customers.js";
 import { StripeClient } from "../stripe.js";
 import { isRecord, sanitizeRedirectPath } from "../utils.js";
 import { getSessionEmail } from "./auth.js";
@@ -24,17 +24,20 @@ export async function portalHandler(routeCtx: RouteContext, ctx: PluginContext) 
 	}
 
 	const stripe = new StripeClient(settings.stripeSecretKey, ctx.http!.fetch);
-	let customer = await getCustomerRecordByEmail(ctx, email);
-	if (!customer) {
-		const stripeCustomers = await stripe.getCustomersByEmail(email);
-		const stripeCustomerId = stripeCustomers.data[0]?.id;
-		if (!stripeCustomerId) {
-			return { ok: false, code: "NO_CUSTOMER", error: "No Stripe customer was found for this email address." };
-		}
-		customer = await upsertCustomerRecord(ctx, email, stripeCustomerId);
-	}
-
 	try {
+		let customer = await getCustomerRecordByEmail(ctx, email);
+		if (!customer) {
+			const stripeCustomers = await stripe.getCustomersByEmail(email);
+			const stripeCustomerId = stripeCustomers.data[0]?.id;
+			if (!stripeCustomerId) {
+				return { ok: false, code: "NO_CUSTOMER", error: "No Stripe customer was found for this email address." };
+			}
+			await verifyCustomerAssociation(ctx, stripe, email, stripeCustomerId, settings);
+			customer = await upsertCustomerRecord(ctx, email, stripeCustomerId);
+		}
+
+		if (hasMigrationBinding(customer)) await verifyMigratedCustomer(customer, stripe, email, settings);
+		else await verifyCustomerAssociation(ctx, stripe, email, customer.stripeCustomerId, settings);
 		const returnUrl = ctx.url(sanitizeRedirectPath(body.returnUrl, settings.accountPath));
 		const session = await stripe.createPortalSession(customer.stripeCustomerId, returnUrl);
 		return { ok: true, url: session.url };

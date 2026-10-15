@@ -93,6 +93,10 @@ export class StripeClient {
 		return data;
 	}
 
+	async getCustomer(id: string): Promise<unknown> {
+		return this.request<unknown>(`/customers/${encodeURIComponent(id)}`);
+	}
+
 	async getAllProducts(): Promise<{ data: StripeProduct[] }> {
 		return this.request<{ data: StripeProduct[] }>("/products?active=true&limit=100");
 	}

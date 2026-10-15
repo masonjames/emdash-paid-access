@@ -5,8 +5,8 @@
 import type { PluginContext } from "emdash/plugin";
 import type { PaidAccessSettings, RouteContext } from "../types.js";
 
-import type { AccessDecision } from "../types.js";
-import { getCustomerRecordByEmail, upsertCustomerRecord } from "../customers.js";
+import type { AccessDecision, CustomerRecord } from "../types.js";
+import { ForeignMigratedCustomerError, getCustomerRecordByEmail, hasMigrationBinding, upsertCustomerRecord, verifyCustomerAssociation, verifyMigratedCustomer } from "../customers.js";
 import { getEntryRestrictions, highestAgentPrice } from "../restrictions.js";
 import { StripeClient } from "../stripe.js";
 import { isRecord, parsePlanSlugs, uniqueStrings } from "../utils.js";
@@ -103,20 +103,41 @@ async function resolveHumanAccess(routeCtx: RouteContext, ctx: PluginContext, se
 	}
 
 	const stripe = new StripeClient(settings.stripeSecretKey, ctx.http!.fetch);
-	const localCustomer = await getCustomerRecordByEmail(ctx, email);
-	if (localCustomer) {
+	let localCustomer: CustomerRecord | null;
+	try { localCustomer = await getCustomerRecordByEmail(ctx, email); }
+	catch { return { restricted: true, authenticated: true, hasAccess: false, email, requiredPlanSlugs, requiredProductIds, error: "Migrated customer identity requires review." }; }
+	if (hasMigrationBinding(localCustomer)) {
 		try {
-			if (await stripe.customerHasProduct(localCustomer.stripeCustomerId, requiredProductIds)) {
+			await verifyMigratedCustomer(localCustomer, stripe, email, settings);
+			const hasAccess = await stripe.customerHasProduct(localCustomer.stripeCustomerId, requiredProductIds);
+			return { restricted: true, authenticated: true, hasAccess, email, requiredPlanSlugs, requiredProductIds };
+		} catch {
+			return { restricted: true, authenticated: true, hasAccess: false, email, requiredPlanSlugs, requiredProductIds,
+				error: "Unable to verify migrated Stripe access. Contact the site administrator." };
+		}
+	}
+	if (localCustomer) {
+		let migrated: boolean;
+		try {
+			migrated = await verifyCustomerAssociation(ctx, stripe, email, localCustomer.stripeCustomerId, settings);
+		} catch {
+			return { restricted: true, authenticated: true, hasAccess: false, email, requiredPlanSlugs, requiredProductIds,
+				error: "Unable to verify migrated Stripe access. Contact the site administrator." };
+		}
+		try {
+			const hasAccess = await stripe.customerHasProduct(localCustomer.stripeCustomerId, requiredProductIds);
+			if (migrated || hasAccess) {
 				return {
 					restricted: true,
 					authenticated: true,
-					hasAccess: true,
+					hasAccess,
 					email,
 					requiredPlanSlugs,
 					requiredProductIds,
 				};
 			}
 		} catch (error) {
+			if (migrated) return { restricted: true, authenticated: true, hasAccess: false, email, requiredPlanSlugs, requiredProductIds, error: "Unable to verify Stripe access right now." };
 			ctx.log.warn("Failed to verify cached Stripe customer access", error);
 		}
 	}
@@ -124,12 +145,19 @@ async function resolveHumanAccess(routeCtx: RouteContext, ctx: PluginContext, se
 	try {
 		const stripeCustomers = await stripe.getCustomersByEmail(email);
 		for (const stripeCustomer of stripeCustomers.data) {
-			if (await stripe.customerHasProduct(stripeCustomer.id, requiredProductIds)) {
-				await upsertCustomerRecord(ctx, email, stripeCustomer.id);
+			let migrated: boolean;
+			try { migrated = await verifyCustomerAssociation(ctx, stripe, email, stripeCustomer.id, settings); }
+			catch (error) {
+				if (error instanceof ForeignMigratedCustomerError) continue;
+				throw error;
+			}
+			const hasAccess = await stripe.customerHasProduct(stripeCustomer.id, requiredProductIds);
+			if (migrated || hasAccess) {
+				if (hasAccess) await upsertCustomerRecord(ctx, email, stripeCustomer.id);
 				return {
 					restricted: true,
 					authenticated: true,
-					hasAccess: true,
+					hasAccess,
 					email,
 					requiredPlanSlugs,
 					requiredProductIds,

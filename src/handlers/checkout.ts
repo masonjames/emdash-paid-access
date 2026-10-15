@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 import type { PluginContext } from "emdash/plugin";
-import type { RouteContext } from "../types.js";
+import type { CustomerRecord, RouteContext } from "../types.js";
 
-import { findOrCreateCustomerRecord, upsertCustomerRecord } from "../customers.js";
+import { findOrCreateCustomerRecord, getCustomerRecordByEmail, hasMigrationBinding, upsertCustomerRecord, verifyCustomerAssociation, verifyMigratedCustomer } from "../customers.js";
 import { getPlan, isBillingInterval } from "../plans.js";
 import { StripeClient } from "../stripe.js";
 import { isRecord, normalizeEmail, sanitizeRedirectPath } from "../utils.js";
@@ -47,6 +47,17 @@ export async function checkoutHandler(routeCtx: RouteContext, ctx: PluginContext
 	const productId = plan.stripeProductId;
 
 	const stripe = new StripeClient(settings.stripeSecretKey, ctx.http!.fetch);
+	let existing: CustomerRecord | null;
+	try { existing = await getCustomerRecordByEmail(ctx, email); }
+	catch { return { ok: false, error: "Migrated customer identity requires review." }; }
+	if (existing) {
+		try {
+			if (hasMigrationBinding(existing)) await verifyMigratedCustomer(existing, stripe, email, settings);
+			else await verifyCustomerAssociation(ctx, stripe, email, existing.stripeCustomerId, settings);
+		} catch {
+			return { ok: false, error: "Unable to verify migrated Stripe customer. Contact the site administrator." };
+		}
+	}
 	const price = await stripe.findRecurringPriceForProduct(productId, billingInterval);
 	if (!price) {
 		return {
@@ -55,7 +66,9 @@ export async function checkoutHandler(routeCtx: RouteContext, ctx: PluginContext
 		};
 	}
 
-	const customer = await findOrCreateCustomerRecord(ctx, stripe, email);
+	let customer: CustomerRecord;
+	try { customer = hasMigrationBinding(existing) ? existing : await findOrCreateCustomerRecord(ctx, stripe, email, settings); }
+	catch { return { ok: false, error: "Unable to verify migrated Stripe customer. Contact the site administrator." }; }
 	const successUrl = new URL(buildAbsoluteUrl(routeCtx, ctx, `${settings.accountPath}complete/`));
 	successUrl.searchParams.set("session_id", "{CHECKOUT_SESSION_ID}");
 	successUrl.searchParams.set("redirect", redirectPath);
@@ -105,6 +118,19 @@ export async function checkoutCompleteHandler(routeCtx: RouteContext, ctx: Plugi
 		return { ok: false, error: "Stripe did not return a customer email for this checkout." };
 	}
 
+	let existing: CustomerRecord | null;
+	try { existing = await getCustomerRecordByEmail(ctx, email); }
+	catch { return { ok: false, error: "Migrated customer identity requires review." }; }
+	try {
+		if (hasMigrationBinding(existing)) {
+			if (checkoutSession.customer !== existing.stripeCustomerId) throw new Error("Customer mismatch");
+			await verifyMigratedCustomer(existing, stripe, email, settings);
+		} else if (typeof checkoutSession.customer === "string" && checkoutSession.customer) {
+			await verifyCustomerAssociation(ctx, stripe, email, checkoutSession.customer, settings);
+		}
+	} catch {
+		return { ok: false, error: "Unable to verify migrated Stripe customer. Contact the site administrator." };
+	}
 	if (typeof checkoutSession.customer === "string" && checkoutSession.customer) {
 		await upsertCustomerRecord(ctx, email, checkoutSession.customer);
 	}

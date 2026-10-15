@@ -7,6 +7,7 @@ import { pathToFileURL } from 'node:url';
 
 const LEGACY = 'restrict-with-stripe';
 const NATIVE = 'paid-access';
+const NATIVE_CUSTOMER_REGISTRY = 'plugin:paid-access:migration:customer-bindings:v1';
 const LIMIT = 100_000;
 const PAID_SLUGS = new Set(['default-product', 'content-personall-ai']);
 const PRIVATE_COLLECTIONS = new Set(['customers', 'sessions', 'authTokens', 'auth_tokens']);
@@ -14,6 +15,7 @@ const LEGACY_SETTINGS = new Set(['plan_mappings', 'show_excerpts', 'stripe_envir
 const SECRET_SETTINGS = new Set(['stripe_secret_key', 'stripe_publishable_key', 'stripeSecretKey', 'stripePublishableKey']);
 const NATIVE_SETTINGS = new Set(['humansMode', 'humansPlans', 'stripeEnvironment', 'stripeAccountId', 'state:legacyPluginPresent']);
 const ACTIONS = {
+ account_attestation_mismatch: 'Repeat offline account-attestation review against the exact retained source and inherited native identities.',
  migration_receipt_mismatch: 'Repeat offline review: the trusted receipt is absent, malformed, or differs from the current inherited access configuration.',
  legacy_migration_review_required: 'Review an explicit offline migration and retain source records and approve a pinned migration receipt after preserving restrictions; this audit never imports or authorizes migration.',
  incomplete_snapshot: 'Use a complete offline SQLite copy with the expected schema and repeat the audit.',
@@ -34,8 +36,9 @@ const equal = (left, right) => JSON.stringify(sorted(left)) === JSON.stringify(s
 const decode = value => typeof value === 'string' ? JSON.parse(value) : value;
 
 /** Pure, deterministic, count-only report. Does not authorize import or deployment. */
-function analyze(snapshot, scope) {
+function analyze(snapshot, scope, attestation) {
  let review = null;
+ const reviewOrder = attestation ? identityOrder : ordered;
  const counts = { legacyArtifacts: 0, nativeCredentialSettings: 0, legacyRules: 0, nativeRules: 0, preservedRules: 0, legacyCustomers: 0, legacySessions: 0, legacyAuthTokens: 0, legacyCredentialSettings: 0, contentMetadata: 0 };
  const issues = new Map();
  const block = (code, count = 1) => issues.set(code, (issues.get(code) ?? 0) + count);
@@ -117,7 +120,8 @@ function analyze(snapshot, scope) {
   const legacyEnvironment = legacySettings.stripe_environment ?? 'live';
   const nativeEnvironment = nativeSettings.stripeEnvironment;
   const normalizeEnvironment = value => ['test', 'sandbox'].includes(value) ? 'test' : value === 'live' ? 'live' : null;
-  if (nativeSettings.humansMode !== 'stripe' || !text(legacySettings.stripe_account_id) || legacySettings.stripe_account_id !== nativeSettings.stripeAccountId || !normalizeEnvironment(legacyEnvironment) || normalizeEnvironment(legacyEnvironment) !== normalizeEnvironment(nativeEnvironment)) block('native_configuration');
+  const legacyAccount = attestation && !snapshot.settings.some(row => row?.plugin === LEGACY && row.key === 'stripe_account_id') ? attestation.accountId : legacySettings.stripe_account_id;
+  if (nativeSettings.humansMode !== 'stripe' || !text(legacyAccount) || legacyAccount !== nativeSettings.stripeAccountId || !normalizeEnvironment(legacyEnvironment) || normalizeEnvironment(legacyEnvironment) !== normalizeEnvironment(nativeEnvironment)) block('native_configuration');
  }
  const entries = new Map(), terms = snapshot.entryTerms ?? [];
  if (!Array.isArray(terms) || terms.length > LIMIT || terms.some(term => !object(term) || !['collection', 'entryId', 'taxonomyName', 'termId'].every(key => text(term[key])))) { block('incomplete_snapshot'); return finish(); }
@@ -128,6 +132,8 @@ function analyze(snapshot, scope) {
   if (!object(row)) { block('invalid_record'); continue; }
   let slugs;
   try { slugs = typeof row.ghost_product_slugs === 'string' ? JSON.parse(row.ghost_product_slugs) : row.ghost_product_slugs; } catch { block('invalid_record'); continue; }
+  // Only explicit public metadata may use the historical empty-object form.
+  if (row.visibility === 'public' && object(slugs) && [Object.prototype, null].includes(Object.getPrototypeOf(slugs)) && Reflect.ownKeys(slugs).length === 0) slugs = [];
   if (slugs != null && !strings(slugs)) { block('invalid_record'); continue; }
   if (row.visibility === 'free') { block('free_member_semantics'); continue; }
   // Historical ghost metadata used 'free' as nonpaid classification. This does
@@ -189,9 +195,9 @@ function analyze(snapshot, scope) {
  const relevantSlugs = sorted([...rules[LEGACY].flatMap(rule => rule.slugs), ...[...relevantNative.values()].flatMap(rule => rule.slugs), ...metadata.filter(item => selected.has(item.key)).flatMap(item => item.required)]);
  review = {
   kind: 'paid-access-reviewed-legacy-migration', version: 1, selectors: requested,
-  sourceSha256: hash({ settings: legacySettings, rules: ordered(rules[LEGACY]), counts: Object.fromEntries(Object.entries(counts).filter(([key]) => key.startsWith('legacy'))) }),
-  nativeSha256: hash({ rules: ordered([...relevantNative.values()]), plans: relevantSlugs.map(slug => [slug, plans.get(slug)]), mode: nativeSettings.humansMode, account: nativeSettings.stripeAccountId, environment: nativeSettings.stripeEnvironment, credentialPresent: counts.nativeCredentialSettings === 1 }),
-  metadataSha256: hash({ entries: ordered([...entries].filter(([key]) => selected.has(key)).map(([key,row]) => [key,row.slug ?? null])), metadata: sorted(metadata.filter(item => selected.has(item.key)).map(item => canonical({ key: item.key, visibility: item.row.visibility ?? null, slugs: item.required }))), terms: ordered(terms.filter(term => selected.has(`entry:${term.collection}:${term.entryId}`))) }),
+  sourceSha256: hash({ settings: legacySettings, rules: reviewOrder(rules[LEGACY]), counts: Object.fromEntries(Object.entries(counts).filter(([key]) => key.startsWith('legacy'))) }),
+  nativeSha256: hash({ rules: reviewOrder([...relevantNative.values()]), plans: relevantSlugs.map(slug => [slug, plans.get(slug)]), mode: nativeSettings.humansMode, account: nativeSettings.stripeAccountId, environment: nativeSettings.stripeEnvironment, credentialPresent: counts.nativeCredentialSettings === 1 }),
+  metadataSha256: hash({ entries: reviewOrder([...entries].filter(([key]) => selected.has(key)).map(([key,row]) => [key,row.slug ?? null])), metadata: sorted(metadata.filter(item => selected.has(item.key)).map(item => canonical({ key: item.key, visibility: item.row.visibility ?? null, slugs: item.required }))), terms: reviewOrder(terms.filter(term => selected.has(`entry:${term.collection}:${term.entryId}`))) }),
   counts: { legacyArtifacts: counts.legacyArtifacts, legacyRules: counts.legacyRules, selectors: requested.length, nativeRules: relevantNative.size },
  };
 
@@ -204,34 +210,228 @@ function canonical(value) {
  return JSON.stringify(value);
 }
 const ordered = values => [...values].sort((a, b) => canonical(a).localeCompare(canonical(b)));
+const identityOrder = values => [...values].sort((a, b) => {
+ const left = canonical(a), right = canonical(b);
+ return left < right ? -1 : left > right ? 1 : 0;
+});
 const hash = value => createHash('sha256').update(canonical(value)).digest('hex');
 export const migrationReceiptSha256 = json => { if (typeof json !== 'string') throw new Error('Receipt must be exact UTF-8 JSON text.'); return createHash('sha256').update(json, 'utf8').digest('hex'); };
-const receiptShape = receipt => object(receipt) && receipt.kind === 'paid-access-reviewed-legacy-migration' && receipt.version === 1 && Array.isArray(receipt.selectors) && receipt.selectors.length <= LIMIT && receipt.selectors.every(value => /^[a-f0-9]{64}$/.test(value)) && equal(receipt.selectors, sorted(receipt.selectors)) && new Set(receipt.selectors).size === receipt.selectors.length;
+const hex = value => typeof value === 'string' && value.length === 64 && /^[a-f0-9]{64}$/.test(value);
+const boundedCount = value => Number.isSafeInteger(value) && value >= 0 && value <= LIMIT;
+// Explicit whole-value equality defensively enforces exact identifier validation.
+const accountId = value => typeof value === 'string' && /^(?:acct_[A-Za-z0-9]{1,255}|[A-Za-z0-9]{32})$/.exec(value)?.[0] === value;
+const customerId = value => typeof value === 'string' && /^cus_[A-Za-z0-9]{1,255}$/.exec(value)?.[0] === value;
+const normalizeEnvironment = value => ['test', 'sandbox'].includes(value) ? 'test' : value === 'live' ? 'live' : null;
+const closed = (value, fields) => object(value) && Reflect.ownKeys(value).length === fields.length && fields.every(key => Object.hasOwn(value, key));
+const ATTESTATION_FIELDS = ['kind', 'version', 'observedAt', 'accountId', 'environment', 'sourceSha256', 'coverageSha256', 'customerCount', 'productCount', 'nativeCredentialRepresentationSha256', 'credentialSha256'];
+const IDENTITY_HASHES = ['sourceSha256', 'coverageSha256', 'customerAssociationsSha256', 'nativeCustomerAssociationsSha256', 'nativeMigrationBindingsSha256', 'expectedNativeMigrationBindingsSha256', 'nativeCustomerRegistryBindingsSha256', 'nativeCustomerRegistrySha256', 'nativeCredentialRepresentationSha256'];
+const IDENTITY_FIELDS = [...IDENTITY_HASHES, 'customerCount', 'productCount', 'credentialSha256'];
+const attestationShape = value => closed(value, ATTESTATION_FIELDS) && value.kind === 'paid-access-legacy-account-attestation' && value.version === 1 && Number.isSafeInteger(value.observedAt) && value.observedAt > 0 && accountId(value.accountId) && ['live', 'test'].includes(value.environment) && ['sourceSha256', 'coverageSha256', 'nativeCredentialRepresentationSha256', 'credentialSha256'].every(key => hex(value[key])) && boundedCount(value.customerCount) && boundedCount(value.productCount) && value.customerCount + value.productCount > 0;
+const receiptShape = receipt => object(receipt) && receipt.kind === 'paid-access-reviewed-legacy-migration' && [1, 2].includes(receipt.version) && Array.isArray(receipt.selectors) && receipt.selectors.length <= LIMIT && receipt.selectors.every(hex) && equal(receipt.selectors, sorted(receipt.selectors)) && new Set(receipt.selectors).size === receipt.selectors.length;
+const OPTION_KEYS = ['reviewedReceiptJson', 'approvedReceiptSha256', 'reviewedAccountAttestationJson', 'approvedAccountAttestationSha256'];
+const completePair = (options, left, right) => Object.hasOwn(options, left) === Object.hasOwn(options, right);
+const requestedAttestation = options => object(options) && ['reviewedAccountAttestationJson', 'approvedAccountAttestationSha256'].some(key => Object.hasOwn(options, key));
+function pinnedJson(json, digest, shape) {
+ try {
+  if (typeof json !== 'string' || json.length > 16_000_000 || !hex(digest) || migrationReceiptSha256(json) !== digest) return null;
+  const value = JSON.parse(json);
+  return shape(value) ? value : null;
+ } catch { return null; }
+}
+function validateAttestation(snapshot, options) {
+ const attestation = pinnedJson(options.reviewedAccountAttestationJson, options.approvedAccountAttestationSha256, attestationShape);
+ const identity = snapshot?.identityBinding;
+ if (!attestation || !Array.isArray(snapshot?.settings) || !Array.isArray(snapshot?.storage) || !closed(identity, IDENTITY_FIELDS) || !IDENTITY_HASHES.every(key => hex(identity[key])) || !boundedCount(identity.customerCount) || !boundedCount(identity.productCount)) return null;
+ if (identity.customerCount !== snapshot.storage.filter(row => row?.plugin === LEGACY && row.collection === 'customers').length || (identity.customerCount ? identity.credentialSha256 !== attestation.credentialSha256 : identity.credentialSha256 !== null)) return null;
+ if (!['sourceSha256', 'coverageSha256', 'customerCount', 'productCount', 'nativeCredentialRepresentationSha256'].every(key => identity[key] === attestation[key]) || identity.customerAssociationsSha256 !== identity.nativeCustomerAssociationsSha256 || identity.nativeMigrationBindingsSha256 !== identity.expectedNativeMigrationBindingsSha256 || identity.nativeCustomerRegistryBindingsSha256 !== identity.nativeMigrationBindingsSha256) return null;
+ const values = (plugin, key) => snapshot.settings.filter(row => row?.plugin === plugin && row.key === key).map(row => decode(row.value));
+ try {
+  const legacyAccount = values(LEGACY, 'stripe_account_id'), nativeAccount = values(NATIVE, 'stripeAccountId'), nativeEnvironment = values(NATIVE, 'stripeEnvironment'), legacyEnvironment = values(LEGACY, 'stripe_environment');
+  if (legacyAccount.length > 1 || legacyAccount.length === 1 && (!accountId(legacyAccount[0]) || legacyAccount[0] !== attestation.accountId)) return null;
+  if (nativeAccount.length !== 1 || nativeAccount[0] !== attestation.accountId || nativeEnvironment.length !== 1 || normalizeEnvironment(nativeEnvironment[0]) !== attestation.environment || legacyEnvironment.length > 1 || normalizeEnvironment(legacyEnvironment.length ? legacyEnvironment[0] : 'live') !== attestation.environment) return null;
+ } catch { return null; }
+ return attestation;
+}
+function migrationAnalysis(snapshot, options, scope) {
+ const requested = requestedAttestation(options);
+ const attestation = requested ? validateAttestation(snapshot, options) : null;
+ const result = analyze(snapshot, scope, attestation);
+ if ((requested || result.report.counts.legacyCustomers > 0) && !attestation) result.report.blockers.push({ code: 'account_attestation_mismatch', count: 1, action: ACTIONS.account_attestation_mismatch });
+ if (attestation && result.review) result.review = { ...result.review, version: 2, accountAttestationSha256: options.approvedAccountAttestationSha256, identityBinding: { ...snapshot.identityBinding } };
+ return result;
+}
 
-/** Receipt and digest must come from independently reviewed deployment configuration,
- * never plugin storage or automatic preparation. Substantive blockers cannot be waived. */
+/** Independently pinned inputs acknowledge reviewed bytes, not provider authenticity.
+ * Substantive blockers cannot be waived. V1 never consumes account attestation. */
 export function auditLegacyMigration(snapshot, options = {}) {
- const { reviewedReceiptJson, approvedReceiptSha256 } = options;
- const supplied = Object.keys(options).length > 0;
- let reviewedReceipt;
- try { if (typeof reviewedReceiptJson === 'string' && reviewedReceiptJson.length <= 16_000_000) reviewedReceipt = JSON.parse(reviewedReceiptJson); } catch { /* Sanitized mismatch below. */ }
- const valid = receiptShape(reviewedReceipt) && typeof approvedReceiptSha256 === 'string' && /^[a-f0-9]{64}$/.test(approvedReceiptSha256) && migrationReceiptSha256(reviewedReceiptJson) === approvedReceiptSha256;
- const { report, review } = analyze(snapshot, valid ? reviewedReceipt.selectors : undefined);
- if (supplied && (!valid || canonical(review) !== canonical(reviewedReceipt))) report.blockers.push({ code: 'migration_receipt_mismatch', count: 1, action: ACTIONS.migration_receipt_mismatch });
- else if (valid && review) report.blockers = report.blockers.filter(row => row.code !== 'legacy_migration_review_required');
+ const validOptions = object(options) && Reflect.ownKeys(options).every(key => OPTION_KEYS.includes(key)) && completePair(options, ...OPTION_KEYS.slice(0, 2)) && completePair(options, ...OPTION_KEYS.slice(2));
+ const receiptRequested = object(options) && ['reviewedReceiptJson', 'approvedReceiptSha256'].some(key => Object.hasOwn(options, key));
+ const reviewedReceipt = validOptions && receiptRequested ? pinnedJson(options.reviewedReceiptJson, options.approvedReceiptSha256, receiptShape) : null;
+ const { report, review } = migrationAnalysis(snapshot, validOptions ? options : {}, reviewedReceipt?.selectors);
+ if (!validOptions || receiptRequested && (!reviewedReceipt || canonical(review) !== canonical(reviewedReceipt))) report.blockers.push({ code: 'migration_receipt_mismatch', count: 1, action: ACTIONS.migration_receipt_mismatch });
+ else if (reviewedReceipt && review) report.blockers = report.blockers.filter(row => row.code !== 'legacy_migration_review_required');
  report.safeToReplaceLegacy = report.blockers.length === 0;
  return report;
 }
 
-/** Preparation is not approval. This returns only hashes/counts for external review. */
-export function createMigrationReviewCandidate(snapshot) {
- const { report, review } = analyze(snapshot);
+/** Preparation is not approval. Returns only hashes/counts for external review. */
+export function createMigrationReviewCandidate(snapshot, options = {}) {
+ if (!object(options) || Reflect.ownKeys(options).some(key => !OPTION_KEYS.slice(2).includes(key)) || !completePair(options, ...OPTION_KEYS.slice(2))) throw new Error('Migration protection has unresolved blockers.');
+ const { report, review } = migrationAnalysis(snapshot, options);
  if (!review || !report.counts.legacyArtifacts || report.blockers.some(row => row.code !== 'legacy_migration_review_required')) throw new Error('Migration protection has unresolved blockers.');
  return review;
 }
 
+/** Opt-in private reads: only exact customer rows and relevant setting representations.
+ * Hashes are canonical JSON, with raw SQLite TEXT preserved inside that JSON.
+ * The credential fingerprint is read from inherited native bindings, never decrypted.
+ * Validation independently compares it with the pinned collector fingerprint.
+ * Supplying snapshot requires the caller to ensure it and private-stage reads share one coherent snapshot; prefer omitting it otherwise. */
+export function readLegacyMigrationIdentityBinding(db, snapshot) {
+ return readMigrationIdentity(db, snapshot, true);
+}
+
+/** Preimport source hashes/counts only; no native private values are selected. */
+export function readLegacyMigrationIdentitySource(db) {
+ return readMigrationIdentity(db, undefined, false);
+}
+
+function readMigrationIdentity(db, snapshot, includeNative) {
+ try {
+  const rows = sql => {
+   const result = db.prepare(sql).all();
+   if (!Array.isArray(result) || result.length > LIMIT) throw new Error();
+   return result;
+  };
+  const version = () => rows('SELECT data_version FROM pragma_data_version')[0]?.data_version;
+  const before = version();
+  if (!Number.isInteger(before)) throw new Error();
+  snapshot ??= readLegacyMigrationSnapshot(db);
+  if (!snapshot?.complete) throw new Error();
+  const privateRows = rows("SELECT plugin_id AS plugin, id, data FROM _plugin_storage WHERE plugin_id='restrict-with-stripe' AND collection='customers' LIMIT 100001");
+  const rawSettings = rows("SELECT name, value FROM options WHERE name IN ('plugin:restrict-with-stripe:plan_mappings','plugin:restrict-with-stripe:show_excerpts','plugin:restrict-with-stripe:stripe_environment','plugin:restrict-with-stripe:stripe_account_id','plugin:restrict-with-stripe:stripe_secret_key','plugin:restrict-with-stripe:stripe_publishable_key','plugin:restrict-with-stripe:stripeSecretKey','plugin:restrict-with-stripe:stripePublishableKey') LIMIT 100001");
+  let bytes = 0;
+  const raw = value => {
+   if (typeof value !== 'string' || value.length > 1_000_000) throw new Error();
+   bytes += Buffer.byteLength(value, 'utf8');
+   if (bytes > 16_000_000) throw new Error();
+   return value;
+  };
+  const names = new Set();
+  const checkSettings = settings => {
+   for (const row of settings) {
+    raw(row.name);
+    if (row.value !== null) raw(row.value);
+    if (names.has(row.name)) throw new Error();
+    names.add(row.name);
+   }
+  };
+  checkSettings(rawSettings);
+  const timestamp = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === (value.length === 20 ? value.replace('Z', '.000Z') : value);
+  const bindingShape = value => closed(value, ['version', 'accountId', 'environment', 'sourceSha256', 'credentialSha256']) && value.version === 1 && accountId(value.accountId) && ['live', 'test'].includes(value.environment) && hex(value.sourceSha256) && hex(value.credentialSha256);
+  const customers = { [LEGACY]: new Map(), [NATIVE]: new Map() };
+  const customerIds = { [LEGACY]: new Set(), [NATIVE]: new Set() };
+  const readCustomers = privateRows => {
+   for (const row of privateRows) {
+    raw(row.id); raw(row.data);
+    const data = JSON.parse(row.data);
+    if (!object(data)) throw new Error();
+    const email = typeof data.email === 'string' ? data.email.trim().toLowerCase() : null;
+    // Ordinary native records follow runtime schemas, outside the inherited cohort.
+    if (row.plugin === NATIVE && !customers[LEGACY].has(email) && !customers[LEGACY].has(row.id) && !customerIds[LEGACY].has(data.stripeCustomerId) && !Object.hasOwn(data, 'migrationBinding')) continue;
+    if (!['email', 'stripeCustomerId', 'createdAt', 'updatedAt'].every(key => Object.hasOwn(data, key)) || Object.keys(data).some(key => !['email', 'stripeCustomerId', 'createdAt', 'updatedAt', ...(row.plugin === NATIVE ? ['migrationBinding'] : [])].includes(key)) || typeof data.email !== 'string' || data.email.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email.trim()) || !customerId(data.stripeCustomerId) || !timestamp(data.createdAt) || !timestamp(data.updatedAt) || Object.hasOwn(data, 'migrationBinding') && !bindingShape(data.migrationBinding)) throw new Error();
+    if (row.plugin === NATIVE && !customers[LEGACY].has(email) && (Object.hasOwn(data, 'migrationBinding') || customerIds[LEGACY].has(data.stripeCustomerId))) throw new Error();
+    // Supported historical IDs are normalized emails. Refuse other forms.
+    if (row.id !== email || customers[row.plugin].has(email) || customerIds[row.plugin].has(data.stripeCustomerId)) throw new Error();
+    customers[row.plugin].set(email, data);
+    customerIds[row.plugin].add(data.stripeCustomerId);
+   }
+  };
+  readCustomers(privateRows);
+  const legacyRows = privateRows.filter(row => row.plugin === LEGACY).map(({ id, data }) => ({ id, data }));
+  const sourceSha256 = hash({ customers: identityOrder(legacyRows), settings: identityOrder(rawSettings.filter(row => row.name.startsWith(`plugin:${LEGACY}:`)).map(({ name, value }) => ({ name, value }))) });
+  const products = [];
+  const mappingRows = rawSettings.filter(row => row.name === `plugin:${LEGACY}:plan_mappings`);
+  if (mappingRows.length) {
+   const mappings = JSON.parse(mappingRows[0].value);
+   if (!object(mappings)) throw new Error();
+   for (const product of Object.values(mappings)) { if (product !== null && !text(product)) throw new Error(); if (product !== null) products.push(product); }
+  }
+  for (const row of snapshot.storage) if (row.plugin === LEGACY && ['restrictions', 'taxonomyRestrictions', 'taxonomy_restrictions'].includes(row.collection)) {
+   const data = decode(row.data);
+   if (!object(data) || !strings(data.productIds)) throw new Error();
+   products.push(...(data.productIds ?? []));
+  }
+  if (products.length > LIMIT || products.some(product => product.length > 256)) throw new Error();
+  const associations = identityOrder([...customers[LEGACY]].map(([email, data]) => [email, data.stripeCustomerId]));
+  const source = {
+   sourceSha256, coverageSha256: hash({ products: sorted(products), customers: associations }), customerCount: associations.length, productCount: sorted(products).length,
+   customerAssociationsSha256: hash(associations),
+  };
+  if (!includeNative) {
+   if (version() !== before) throw new Error();
+   return source;
+  }
+  readCustomers(rows("SELECT plugin_id AS plugin, id, data FROM _plugin_storage WHERE plugin_id='paid-access' AND collection='customers' LIMIT 100001"));
+  const nativeCredential = rows("SELECT name, value FROM options WHERE name='plugin:paid-access:settings:stripeSecretKey' LIMIT 100001");
+  checkSettings(nativeCredential);
+  const registryRows = rows(`SELECT name, value FROM options WHERE name='${NATIVE_CUSTOMER_REGISTRY}' LIMIT 100001`);
+  checkSettings(registryRows);
+  if (registryRows.length !== 1 || typeof registryRows[0].value !== 'string' || Buffer.byteLength(registryRows[0].value, 'utf8') > 100_000) throw new Error();
+  const registryJson = registryRows[0].value, registry = JSON.parse(registryJson);
+  if (!closed(registry, ['version', 'members']) || registry.version !== 1 || !object(registry.members)) throw new Error();
+  const registryBindings = [], registryPairs = [], registryCustomerIds = new Set();
+  let blockedMemberCount = 0;
+  for (const [email, member] of Object.entries(registry.members)) {
+   const blocked = object(member) && Object.hasOwn(member, 'blocked');
+   if (!customers[LEGACY].has(email) || !closed(member, ['stripeCustomerId', 'migrationBinding', ...(blocked ? ['blocked'] : [])]) || blocked && member.blocked !== true || !customerId(member.stripeCustomerId) || registryCustomerIds.has(member.stripeCustomerId) || !bindingShape(member.migrationBinding)) throw new Error();
+   registryCustomerIds.add(member.stripeCustomerId);
+   const pair = [[email, member.stripeCustomerId], member.migrationBinding];
+   registryBindings.push(pair);
+   registryPairs.push(blocked ? [...pair, { blocked: true }] : pair);
+   if (blocked) blockedMemberCount++;
+  }
+  if (registryBindings.length !== associations.length) throw new Error();
+  // JSON.parse collapses duplicate keys. Count lexical object keys as well;
+  // This closed schema has 2 envelope keys, 8 per member and 1 per blocked member.
+  const registryKeyCount = [...registryJson.matchAll(/"(?:[^"\\]|\\.)*"/g)].filter(match => /^\s*:/.test(registryJson.slice(match.index + match[0].length))).length;
+  if (registryKeyCount !== 2 + 8 * registryBindings.length + blockedMemberCount) throw new Error();
+  const nativeAssociations = [], nativeBindings = [], expectedBindings = [];
+  const nativeSetting = key => {
+   const matches = snapshot.settings.filter(row => row.plugin === NATIVE && row.key === key);
+   if (matches.length !== 1) throw new Error();
+   return decode(matches[0].value);
+  };
+  const nativeAccount = nativeSetting('stripeAccountId'), nativeEnvironment = normalizeEnvironment(nativeSetting('stripeEnvironment'));
+  if (!accountId(nativeAccount) || !nativeEnvironment) throw new Error();
+  let credentialSha256 = null;
+  for (const [email] of associations) {
+   const native = customers[NATIVE].get(email);
+   if (!native?.migrationBinding || credentialSha256 !== null && native.migrationBinding.credentialSha256 !== credentialSha256) throw new Error();
+   credentialSha256 = native.migrationBinding.credentialSha256;
+   const association = [email, native.stripeCustomerId];
+   const expected = { stripeCustomerId: customers[LEGACY].get(email).stripeCustomerId, migrationBinding: { version: 1, accountId: nativeAccount, environment: nativeEnvironment, sourceSha256, credentialSha256 } };
+   const member = registry.members[email];
+   const core = { stripeCustomerId: member.stripeCustomerId, migrationBinding: member.migrationBinding };
+   if (!Object.hasOwn(registry.members, email) || canonical(core) !== canonical({ stripeCustomerId: native.stripeCustomerId, migrationBinding: native.migrationBinding }) || canonical(core) !== canonical(expected)) throw new Error();
+   nativeAssociations.push(association);
+   nativeBindings.push([association, native.migrationBinding]);
+   expectedBindings.push([[email, expected.stripeCustomerId], expected.migrationBinding]);
+  }
+  if (nativeCredential.length !== 1 || !text(nativeCredential[0].value)) throw new Error();
+  if (version() !== before) throw new Error();
+  return {
+   ...source, nativeCustomerAssociationsSha256: hash(identityOrder(nativeAssociations)),
+   nativeMigrationBindingsSha256: hash(identityOrder(nativeBindings)), expectedNativeMigrationBindingsSha256: hash(identityOrder(expectedBindings)),
+   nativeCustomerRegistryBindingsSha256: hash(identityOrder(registryBindings)), nativeCustomerRegistrySha256: hash(identityOrder(registryPairs)),
+   nativeCredentialRepresentationSha256: hash(nativeCredential[0].value), credentialSha256,
+  };
+ } catch { throw new Error('Migration identity evidence is unavailable or unsupported.'); }
+}
+
 /** Caller supplies its existing better-sqlite3 connection. Only SELECTs are issued. */
-export function readLegacyMigrationSnapshot(db) {
+export function readLegacyMigrationSnapshot(db, options = {}) {
+ if (!object(options) || Object.keys(options).some(key => key !== 'includeIdentityBinding') || options.includeIdentityBinding !== undefined && typeof options.includeIdentityBinding !== 'boolean') throw new Error('Unsupported snapshot options.');
  const rows = (sql, ...parameters) => {
   const result = db.prepare(sql).all(...parameters);
   if (result.length > LIMIT) throw new Error('Audit exceeds supported bound.');
@@ -242,7 +442,7 @@ export function readLegacyMigrationSnapshot(db) {
  const tables = new Set(rows("SELECT name FROM sqlite_master WHERE type='table'").map(row => row.name));
  if (!tables.has('_plugin_storage') || !tables.has('options')) throw new Error('Incomplete migration schema.');
  const storage = rows("SELECT plugin_id AS plugin, collection, CASE WHEN collection IN ('restrictions','taxonomyRestrictions','taxonomy_restrictions') THEN id ELSE NULL END AS id, CASE WHEN collection IN ('restrictions','taxonomyRestrictions','taxonomy_restrictions') THEN data ELSE NULL END AS data FROM _plugin_storage WHERE plugin_id IN ('restrict-with-stripe','paid-access') LIMIT 100001");
- // Secret values are never selected, even into process memory.
+ // Default reader never selects secret values, even into process memory.
  const settings = rows("SELECT name, CASE WHEN name IN ('plugin:restrict-with-stripe:plan_mappings','plugin:restrict-with-stripe:show_excerpts','plugin:restrict-with-stripe:stripe_environment','plugin:restrict-with-stripe:stripe_account_id','plugin:paid-access:settings:humansMode','plugin:paid-access:settings:humansPlans','plugin:paid-access:settings:stripeEnvironment','plugin:paid-access:settings:stripeAccountId','plugin:paid-access:state:legacyPluginPresent') THEN value ELSE NULL END AS value, CASE WHEN name='plugin:paid-access:settings:stripeSecretKey' AND value IS NOT NULL AND value NOT IN ('null','\"\"','') THEN 1 ELSE 0 END AS present FROM options WHERE name LIKE 'plugin:restrict-with-stripe:%' OR name LIKE 'plugin:paid-access:settings:%' OR name='plugin:paid-access:state:legacyPluginPresent' LIMIT 100001").map(row => {
   const legacy = row.name.startsWith(`plugin:${LEGACY}:`);
   return { plugin: legacy ? LEGACY : NATIVE, key: row.name === 'plugin:paid-access:state:legacyPluginPresent' ? 'state:legacyPluginPresent' : row.name.slice((legacy ? `plugin:${LEGACY}:` : `plugin:${NATIVE}:settings:`).length), value: row.value, present: row.present === 1 };
@@ -268,12 +468,14 @@ export function readLegacyMigrationSnapshot(db) {
  }
  // Historical snapshots can be restored later; do not silently discard their access semantics.
  if (tables.has('revisions')) contentMetadata.push(...rows("SELECT collection, entry_id AS id, 1 AS revision, json_extract(data,'$.visibility') AS visibility, json_extract(data,'$.ghost_product_slugs') AS ghost_product_slugs FROM revisions WHERE json_extract(data,'$.visibility') IS NOT NULL OR json_extract(data,'$.ghost_product_slugs') IS NOT NULL LIMIT 100001"));
+ const snapshot = { complete: true, storage, settings, contentMetadata, entryTerms };
+ if (options.includeIdentityBinding) snapshot.identityBinding = readLegacyMigrationIdentityBinding(db, snapshot);
  if (rows('SELECT data_version FROM pragma_data_version')[0]?.data_version !== dataVersion) throw new Error('Database changed during audit.');
- return { complete: true, storage, settings, contentMetadata, entryTerms };
+ return snapshot;
 }
 
 export function auditLegacyDatabase(db, options) {
- try { return auditLegacyMigration(readLegacyMigrationSnapshot(db), options); }
+ try { return auditLegacyMigration(readLegacyMigrationSnapshot(db, { includeIdentityBinding: requestedAttestation(options) }), options); }
  catch { return auditLegacyMigration(null); } // Never expose SQL/data in errors.
 }
 

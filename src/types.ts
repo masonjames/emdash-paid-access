@@ -59,7 +59,22 @@ export interface SessionRecord {
 	createdAt: string;
 }
 
+/** Created only by a reviewed offline migration; runtime routes never mint bindings. */
+export interface MigrationCustomerBinding {
+	version: 1;
+	accountId: string;
+	environment: StripeEnvironment;
+	sourceSha256: string;
+	credentialSha256: string;
+}
+
+export interface MigrationCustomerRegistry {
+	version: 1;
+	members: Record<string, { stripeCustomerId: string; migrationBinding: MigrationCustomerBinding; blocked?: true }>;
+}
+
 export interface CustomerRecord {
+	migrationBinding?: MigrationCustomerBinding;
 	email: string;
 	stripeCustomerId: string;
 	createdAt: string;

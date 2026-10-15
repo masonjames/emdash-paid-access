@@ -70,6 +70,7 @@ function createCtx(options: {
 			sessions,
 			auth_tokens,
 		},
+		kv: { get: async () => null },
 		settings: {
 			get: async <T>(key: string): Promise<T | null> => ((settingsStore.get(key) as T | undefined) ?? null),
 			set: async (key: string, value: unknown) => {

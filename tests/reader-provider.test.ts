@@ -14,6 +14,7 @@ function setup(input: { rules?: Record<string, unknown>; taxonomy?: unknown; ent
 	const calls: string[] = [];
 	const unrelatedPublic = vi.fn(async () => { throw new Error("No other plugin may be called"); });
 	const ctx = {
+		kv: { get: async () => null },
 		settings: { get: async (key: string) => ({ humansMode: input.migration ? "delegate" : "stripe", humansPlans: [{ slug: "plus", name: "Plus", stripeProductId: "prod_plus", grantsVisibility: [] }, { slug: "pro", name: "Pro", stripeProductId: "prod_pro", grantsVisibility: [] }], stripeSecretKey: "sk_test_synthetic", showExcerpts: true } as Record<string, unknown>)[key] ?? null },
 		storage: {
 			restrictions: { get: async (key: string) => input.rules?.[key] ?? null },
