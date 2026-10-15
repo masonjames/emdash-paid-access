@@ -35,8 +35,8 @@ separate [services from Mason James](https://masonjames.com/plugins/paid-access/
 
 ## Beta status
 
-The native membership integration in this source revision is a **local candidate,
-not published or deployed**. It requires the matching reviewed EmDash core and
+This source revision prepares **0.1.0-beta.3**, with npm publication pending.
+Read the [beta.3 core compatibility gate](docs/releases/0.1.0-beta.3.md). It requires the matching reviewed EmDash core and
 host integration. Local checks do not establish staging or production readiness.
 
 The recorded public npm release is `0.1.0-beta.2`; its package and existing demo

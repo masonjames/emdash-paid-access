@@ -7,6 +7,13 @@ manager declared in `package.json`. The installed runtime supports Node 22.12+.
 Build and verification commands do not publish, deploy, send membership emails,
 or start a demo site.
 
+## Beta.3 core prerequisite
+
+Read the [beta.3 compatibility gate](../releases/0.1.0-beta.3.md) first.
+The new core APIs are not in registry EmDash 1.2.0. The standard release gate
+refuses that installation; a local fork-qualified package is not yet a
+publishable clean-consumer release.
+
 ## Local checks
 
 ```sh
@@ -29,9 +36,9 @@ The aggregate gate writes:
 
 | Artifact | Purpose |
 | --- | --- |
-| `artifacts/emdash-paid-access-0.1.0-beta.2.tgz` | npm-format package for a consumer site |
-| `artifacts/emdash-paid-access-0.1.0-beta.2.tgz.sha256` | Digest of that exact npm archive |
-| `artifacts/paid-access-0.1.0-beta.2.tar.gz` | Sandbox-format package from the same version |
+| `artifacts/emdash-paid-access-0.1.0-beta.3.tgz` | npm-format package for a consumer site |
+| `artifacts/emdash-paid-access-0.1.0-beta.3.tgz.sha256` | Digest of that exact npm archive |
+| `artifacts/paid-access-0.1.0-beta.3.tar.gz` | Sandbox-format package from the same version |
 
 The package checker verifies exported files, consumer resolution of the companion
 and x402 middleware, matching core bytes across formats, and preserved source
@@ -113,8 +120,8 @@ the original Git history; use a Git checkout when preparing a contribution.
 ## Release channels
 
 Public source, npm, the EmDash registry, and deployed hosts are separate
-delivery steps. This source revision's native integration is a local candidate,
-not published or deployed. The recorded `0.1.0-beta.2` release and its demo
+delivery steps. This source revision prepares beta.3; its
+[release note](../releases/0.1.0-beta.3.md) records the qualification and blockers. The recorded `0.1.0-beta.2` release and its demo
 evidence apply to earlier work. Record fresh artifact and host evidence before
 qualifying this candidate; never reuse a published version for changed bytes.
 A Node site can use a package's core descriptor and companion without registry
@@ -126,14 +133,18 @@ publication.
    changelog and release evidence to describe observed results and beta limits.
 2. Finalize the source revision and run `pnpm release:check`. Review the packed
    contents, preserve the archive's checksum, and test that exact artifact in a
-   fresh consumer. Keep `0.1.0-beta.2` consistent across source and artifacts.
+   fresh consumer. Keep `0.1.0-beta.3` consistent across source and artifacts.
 3. Authenticate the intended npm account with `pnpm login --registry
    https://registry.npmjs.org`, then confirm it with `pnpm whoami --registry
    https://registry.npmjs.org`. Keep credentials outside the repository.
-4. After acceptance, publish the reviewed archive with the `beta` dist-tag:
+4. **Blocked for beta.3:** the candidate manifest is `private: true`. Do not
+   publish it. First release and install the compatible core, tighten both core
+   peer ranges, prove a clean consumer, and obtain explicit publication approval.
+   Removing the private guard changes the artifact: rebuild, recheck and review
+   its new checksum. Only then use the `beta` dist-tag:
 
 ```sh
-pnpm publish ./artifacts/emdash-paid-access-0.1.0-beta.2.tgz \
+pnpm publish ./artifacts/emdash-paid-access-0.1.0-beta.3.tgz \
   --registry https://registry.npmjs.org \
   --tag beta --access public --publish-wait-timeout 600000
 ```

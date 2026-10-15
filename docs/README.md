@@ -1,8 +1,9 @@
 # Paid Access documentation
 
 Paid Access combines a standard-format EmDash core with an Astro companion.
-This source revision's native membership integration is a local candidate, not
-published or deployed. It requires the matching reviewed core and host setup.
+This source revision prepares beta.3 and requires the matching reviewed core
+and host setup. See the [beta.3 compatibility gate](releases/0.1.0-beta.3.md);
+source availability does not mean npm or production availability.
 The recorded npm beta, `0.1.0-beta.2`
 ([historical verification](releases/0.1.0-beta.2.md)), and existing demo do not
 qualify this candidate. The installation guide distinguishes that beta from

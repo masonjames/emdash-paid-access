@@ -8,10 +8,10 @@ email provider, or deployment adapter.
 
 ## 1. Choose a package
 
-This source revision's native integration is a local candidate, not published
-or deployed. Evaluate its exact reviewed source archive with the matching
-EmDash core and host bindings. A public clone or beta install does not establish
-that it contains those local changes.
+This source revision prepares beta.3 and requires the matching reviewed EmDash core
+and host bindings. Stock EmDash 1.2.0 is incompatible with this source. Read the
+[beta.3 compatibility gate](../releases/0.1.0-beta.3.md) before building it.
+Npm publication and clean-consumer installation remain blocked on core distribution.
 
 The recorded npm beta is `0.1.0-beta.2`. An npm installation on Node includes
 the core descriptor and companion and does not need a registry listing.
@@ -35,19 +35,31 @@ The installed runtime supports Node 22.12+.
 ### Build from source
 
 Use Node 22.18+ to build the source and the pnpm version declared in `package.json`.
-Use this path when evaluating or modifying the source:
+For beta.3, install the exact reviewed core peers before the release check.
+The checked-in registry dependency lock alone does not supply those APIs, and
+`pnpm check:core` will refuse it. The remaining commands are for maintainers
+with that dependency prerequisite satisfied:
 
 ```sh
 git clone https://github.com/masonjames/emdash-paid-access.git
 cd emdash-paid-access
 pnpm install --frozen-lockfile
+```
+
+That installs registry peers; it does not install the compatible core. The
+[qualification mechanism](../releases/0.1.0-beta.3.md#local-qualification-mechanism)
+describes the temporary peer substitutions used for this candidate. After
+supplying those exact built peers, run:
+
+```sh
 pnpm release:check
 ```
 
-The command writes a checked npm archive under `artifacts/`. In your site:
+The command writes a checked npm archive under `artifacts/`. Install it only
+in a site already configured with the same reviewed core and x402 fork peers:
 
 ```sh
-pnpm add /path/to/emdash-paid-access/artifacts/emdash-paid-access-0.1.0-beta.2.tgz @emdash-cms/x402@1.2.0
+pnpm add /path/to/emdash-paid-access/artifacts/emdash-paid-access-0.1.0-beta.3.tgz
 ```
 
 Record the source commit and archive checksum you evaluated. A source build

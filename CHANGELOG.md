@@ -1,6 +1,20 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-beta.3 — prepared 2026-10-15
+
+Source candidate; npm publication remains pending the compatible EmDash core.
+See [compatibility and qualification](docs/releases/0.1.0-beta.3.md).
+
+### Added
+
+- Native reader access and paid plugin HTTP routes using the reviewed EmDash
+  core integration, including Bazaar discovery in actual payment challenges.
+- Native editor policy controls and explicit protection saves.
+- Bounded membership checks and request-scoped entitlement reuse.
+- Offline migration auditing with account/mode/credential-bound identities,
+  independently pinned approval evidence, and blocked historical associations.
+  Migrated identities cannot silently rebind through an email lookup.
+
 
 ### Changed
 

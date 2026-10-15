@@ -25,6 +25,7 @@ try {
  execFileSync("tar", ["-xzf", archive, "--strip-components=1", "-C", installed]);
  const packed = JSON.parse(readFileSync(join(installed, "package.json"), "utf8"));
  assert.equal(packed.version, manifest.version);
+ assert.equal(packed.private, manifest.private, "Publication guard differs in packed manifest");
  assert.deepEqual(readFileSync(join(installed, "dist/source/manifest.json")), readFileSync(join(root, "package.json")), "Preserved source manifest differs from release source");
  assert.deepEqual(readFileSync(join(installed, "dist/source/lock.yaml")), readFileSync(join(root, "pnpm-lock.yaml")), "Packaged lockfile differs from release source");
  const targets = value => typeof value === "string" ? [value] : Object.values(value).flatMap(targets);
